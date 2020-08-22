@@ -89,6 +89,7 @@ func (c ApplicationController) HandleActionResponse(responses daptinClient.Dapti
 	//for _, response := range responses {
 	//
 	//}
+	return nil
 }
 
 func (c ApplicationController) ActionSignUp(context *cli.Context) error {
