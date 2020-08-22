@@ -1,0 +1,7 @@
+Hosts:
+  - Name: local
+    Endpoint: http://localhost:6336
+  - Name: dapt.in
+    Endpoint: https://dashboard.dapt.in
+CurrentContext:
+AuthToken
