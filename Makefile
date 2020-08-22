@@ -24,7 +24,7 @@ VERSION_SUFFIX := $(shell git describe --abbrev=8 --tags | perl -lpe 's/^v\d+\.\
 TAG := $(VERSION)$(VERSION_SUFFIX)$(TAG_BRANCH)
 NEXT_VERSION := $(shell echo $(VERSION) | perl -lpe 's/v//; $$_ += 0.01; $$_ = sprintf("v%.2f.0", $$_)')
 ifndef RELEASE_TAG
-	TAG := $(TAG)-beta
+	TAG := tag-$(TAG)-beta
 endif
 GO_VERSION := $(shell go version)
 GO_FILES := $(shell go list ./... | grep -v /vendor/ )
