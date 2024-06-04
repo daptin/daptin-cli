@@ -95,8 +95,17 @@ func main() {
 				panic(err)
 			}
 			worlds := MapArray(allWorlds, "attributes")
-			appController.worlds = worlds
-			//PrintTable(worlds)
+			appController.worlds = make(map[string]map[string]interface{})
+			for _, world := range worlds {
+				appController.worlds[world["table_name"].(string)] = world
+			}
+
+			outputRenderer := context.String("output")
+			switch outputRenderer {
+			case "table":
+				appController.renderer = NewTableRenderer()
+			}
+
 			return nil
 		},
 		Flags: []cli.Flag{
@@ -105,6 +114,13 @@ func main() {
 				Usage:       "Load configuration from `FILE`",
 				DefaultText: "~/.daptin/config.yaml",
 				EnvVars:     []string{"DAPTIN_CLI_CONFIG"},
+			},
+			&cli.StringFlag{
+				Name:        "output, o",
+				Usage:       "output format",
+				DefaultText: "table",
+				Value:       "table",
+				EnvVars:     []string{"DAPTIN_CLI_OUTPUT"},
 			},
 			&cli.StringFlag{
 				Name:        "endpoint",
@@ -207,6 +223,18 @@ func main() {
 				Action: appController.ActionSignUp,
 			},
 			{
+				Name:  "schema",
+				Usage: "show schema",
+				Flags: []cli.Flag{
+					&cli.StringFlag{
+						Name:     "name",
+						Usage:    "Table name",
+						Required: true,
+					},
+				},
+				Action: appController.ActionShowSchema,
+			},
+			{
 				Name:  "list",
 				Usage: "list entity",
 				Flags: []cli.Flag{
@@ -218,6 +246,11 @@ func main() {
 					&cli.StringFlag{
 						Name:     "filter",
 						Usage:    "filter by keyword",
+						Required: false,
+					},
+					&cli.StringFlag{
+						Name:     "columns",
+						Usage:    "columns to print",
 						Required: false,
 					},
 					&cli.IntFlag{
@@ -242,7 +275,7 @@ func main() {
 	}
 
 	cli.VersionFlag = &cli.BoolFlag{
-		Name: "version", Aliases: []string{"V"},
+		Name: "version", Aliases: []string{"v"},
 		Usage: "print only the version",
 	}
 
