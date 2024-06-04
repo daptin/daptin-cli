@@ -1,18 +1,15 @@
 package main
 
 import (
-	"errors"
-	"fmt"
+	daptinClient "github.com/daptin/daptin-go-client"
 	"github.com/ghodss/yaml"
+	"github.com/urfave/cli/v2"
 	"io/ioutil"
 	"log"
 	"os"
-
-	daptinClient "github.com/daptin/daptin-go-client"
-	"github.com/urfave/cli/v2"
 )
 
-type DaptinHostEndpoing struct {
+type DaptinHostEndpoint struct {
 	Name     string
 	Endpoint string
 	Token    string
@@ -20,144 +17,8 @@ type DaptinHostEndpoing struct {
 
 type DaptinCliConfig struct {
 	CurrentContextName string
-	Context            DaptinHostEndpoing `json:"-"`
-	Hosts              []DaptinHostEndpoing
-}
-
-type ApplicationController struct {
-	daptinClient    daptinClient.DaptinClient
-	daptinCliConfig DaptinCliConfig
-	configPath      string
-}
-
-func (c *ApplicationController) WriteConfig() {
-	yamlStr, err := yaml.Marshal(c.daptinCliConfig)
-	if err != nil {
-		log.Printf("Failed to marshal json to save config: %v", err)
-		return
-	}
-	err = ioutil.WriteFile(c.configPath, yamlStr, 0644)
-	if err != nil {
-		log.Printf("Failed to write config: %v", err)
-	}
-}
-
-func (c *ApplicationController) SetContext(context *cli.Context) error {
-
-	for _, host := range c.daptinCliConfig.Hosts {
-		if host.Name == context.String("name") {
-			c.daptinCliConfig.CurrentContextName = host.Name
-			c.WriteConfig()
-			return nil
-		}
-	}
-
-	return errors.New(fmt.Sprintf("invalid name [%v], not found in config", context.String("name")))
-}
-
-func (c *ApplicationController) ActionBeforeSignIn(context *cli.Context) error {
-	endpoint := context.String("endpoint")
-	if c.daptinCliConfig.Context.Endpoint == "" && endpoint == "" {
-		log.Printf("Set endpoint is config and set a endpoint with --endpoint http://localhost:6336")
-		return errors.New("no endpoint found")
-	}
-	log.Printf("Endpoint: %s", endpoint)
-	if c.daptinCliConfig.CurrentContextName == "" && endpoint != "" {
-		c.daptinCliConfig.Context.Endpoint = endpoint
-	}
-	if c.daptinCliConfig.CurrentContextName != "" {
-		var sH DaptinHostEndpoing
-		for _, h := range c.daptinCliConfig.Hosts {
-			if h.Name == c.daptinCliConfig.CurrentContextName || h.Endpoint == endpoint {
-				sH = h
-				break
-			}
-		}
-		if sH.Name != "" {
-			c.daptinCliConfig.Context = sH
-		}
-	}
-	if endpoint != "" && endpoint != c.daptinCliConfig.Context.Endpoint {
-		c.daptinCliConfig.Context.Endpoint = endpoint
-		c.daptinCliConfig.Context.Name = endpoint
-		c.daptinCliConfig.Context.Token = ""
-	}
-
-	daptinClientInstance := daptinClient.NewDaptinClient(c.daptinCliConfig.Context.Endpoint, false)
-	if context.Bool("debug") {
-		daptinClientInstance.SetDebug(true)
-	}
-	c.daptinClient = daptinClientInstance
-
-	return nil
-}
-
-func (c *ApplicationController) ActionSignIn(context *cli.Context) error {
-
-	responses, err := c.daptinClient.Execute("signin", "user_account", map[string]interface{}{
-		"email":    context.String("email"),
-		"password": context.String("password"),
-	})
-	if err != nil {
-		return err
-	}
-
-	return c.HandleActionResponse(responses)
-}
-
-func (c *ApplicationController) ActionVerifyOtp(context *cli.Context) error {
-
-	responses, err := c.daptinClient.Execute("signin_with_2fa", "user_account", map[string]interface{}{
-		"otp":      context.String("otp"),
-		"email":    context.String("email"),
-		"password": context.String("password"),
-	})
-	if err != nil {
-		return err
-	}
-
-	return c.HandleActionResponse(responses)
-}
-
-func (c *ApplicationController) HandleActionResponse(responses []daptinClient.DaptinActionResponse) error {
-	for _, response := range responses {
-		//log.Printf("Action Response: %v", response)
-		switch response.ResponseType {
-		case "client.store.set":
-			keyName := response.Attributes["key"]
-			if keyName == "token" {
-				c.daptinCliConfig.Context.Token = response.Attributes["value"].(string)
-
-				hostPresent := false
-
-				for i, h := range c.daptinCliConfig.Hosts {
-					if h.Endpoint == c.daptinCliConfig.Context.Endpoint || h.Name == c.daptinCliConfig.Context.Name {
-						hostPresent = true
-						h.Token = c.daptinCliConfig.Context.Token
-						c.daptinCliConfig.Hosts[i] = h
-						c.daptinCliConfig.CurrentContextName = h.Name
-					}
-				}
-				if !hostPresent {
-					c.daptinCliConfig.Context.Name = c.daptinCliConfig.Context.Endpoint
-					c.daptinCliConfig.Context.Token = c.daptinCliConfig.Context.Token
-					c.daptinCliConfig.Hosts = append(c.daptinCliConfig.Hosts, c.daptinCliConfig.Context)
-				}
-				c.daptinCliConfig.CurrentContextName = c.daptinCliConfig.Context.Name
-				c.WriteConfig()
-			}
-		case "client.cookie.set":
-		case "client.notify":
-			log.Printf("Notice: %s", response.Attributes["message"])
-		case "client.redirect":
-		}
-	}
-	return nil
-}
-
-func (c *ApplicationController) ActionSignUp(context *cli.Context) error {
-
-	return c.ActionSignIn(context)
+	Context            DaptinHostEndpoint `json:"-"`
+	Hosts              []DaptinHostEndpoint
 }
 
 func main() {
@@ -183,11 +44,12 @@ func main() {
 		_, _ = os.Create(configFile)
 	}
 
-	daptinHostEndpoint := DaptinHostEndpoing{}
+	daptinHostEndpoint := DaptinHostEndpoint{}
 
 	for _, config := range daptinCliConfig.Hosts {
 		if config.Name == daptinCliConfig.CurrentContextName {
 			daptinHostEndpoint = config
+			daptinCliConfig.Context = daptinHostEndpoint
 			break
 		}
 	}
@@ -202,7 +64,39 @@ func main() {
 
 	app := &cli.App{
 		Before: func(context *cli.Context) error {
+			if daptinCliConfig.CurrentContextName == "" {
+				daptinCliConfig.Context.Endpoint = context.String("endpoint")
+			}
+			if daptinCliConfig.CurrentContextName != "" {
+				var sH DaptinHostEndpoint
+				for _, h := range daptinCliConfig.Hosts {
+					if h.Name == daptinCliConfig.CurrentContextName {
+						sH = h
+						break
+					}
+				}
+				if sH.Name != "" {
+					daptinCliConfig.Context = sH
+				}
+			}
 
+			var daptinClientInstance daptinClient.DaptinClient
+
+			if daptinCliConfig.Context.Token == "" {
+				daptinClientInstance = daptinClient.NewDaptinClient(daptinCliConfig.Context.Endpoint, false)
+			} else {
+				daptinClientInstance = daptinClient.NewDaptinClientWithAuthToken(daptinCliConfig.Context.Endpoint, daptinCliConfig.Context.Token, false)
+			}
+			appController.daptinClient = daptinClientInstance
+			allWorlds, err := daptinClientInstance.FindAll("world", daptinClient.DaptinQueryParameters{
+				"page[size]": 100,
+			})
+			if err != nil {
+				panic(err)
+			}
+			worlds := MapArray(allWorlds, "attributes")
+			appController.worlds = worlds
+			//PrintTable(worlds)
 			return nil
 		},
 		Flags: []cli.Flag{
@@ -211,6 +105,12 @@ func main() {
 				Usage:       "Load configuration from `FILE`",
 				DefaultText: "~/.daptin/config.yaml",
 				EnvVars:     []string{"DAPTIN_CLI_CONFIG"},
+			},
+			&cli.StringFlag{
+				Name:        "endpoint",
+				Usage:       "endpoint",
+				DefaultText: "http://localhost:6336",
+				EnvVars:     []string{"DAPTIN_ENDPOINT"},
 			},
 			&cli.BoolFlag{
 				Name:  "debug, v",
@@ -225,9 +125,8 @@ func main() {
 				Action:  appController.SetContext,
 			},
 			{
-				Name:   "signin",
-				Usage:  "sign in",
-				Before: appController.ActionBeforeSignIn,
+				Name:  "signin",
+				Usage: "sign in",
 				Flags: []cli.Flag{
 					&cli.StringFlag{
 						Name:     "email",
@@ -238,6 +137,7 @@ func main() {
 						Name:     "password",
 						Required: true,
 						Usage:    "Password",
+						Hidden:   true,
 					},
 					&cli.StringFlag{
 						Name:        "endpoint",
@@ -248,9 +148,8 @@ func main() {
 				Action: appController.ActionSignIn,
 			},
 			{
-				Name:   "signin_with_2fa",
-				Usage:  "Sign in with 2FA",
-				Before: appController.ActionBeforeSignIn,
+				Name:  "signin_with_2fa",
+				Usage: "Sign in with 2FA",
 				Flags: []cli.Flag{
 					&cli.StringFlag{
 						Name:     "email",
@@ -276,9 +175,8 @@ func main() {
 				Action: appController.ActionVerifyOtp,
 			},
 			{
-				Name:   "signup",
-				Usage:  "sign in",
-				Before: appController.ActionBeforeSignIn,
+				Name:  "signup",
+				Usage: "sign in",
 				Flags: []cli.Flag{
 					&cli.StringFlag{
 						Name:     "email",
@@ -307,6 +205,37 @@ func main() {
 					},
 				},
 				Action: appController.ActionSignUp,
+			},
+			{
+				Name:  "list",
+				Usage: "list entity",
+				Flags: []cli.Flag{
+					&cli.StringFlag{
+						Name:     "name",
+						Usage:    "entity name",
+						Required: false,
+					},
+					&cli.StringFlag{
+						Name:     "filter",
+						Usage:    "filter by keyword",
+						Required: false,
+					},
+					&cli.IntFlag{
+						Name:        "pageSize",
+						Usage:       "number of items per page",
+						Required:    false,
+						Value:       10,
+						DefaultText: "10",
+					},
+					&cli.IntFlag{
+						Name:        "pageNumber",
+						Usage:       "page number",
+						Required:    false,
+						Value:       0,
+						DefaultText: "0",
+					},
+				},
+				Action: appController.ActionListEntity,
 			},
 		},
 		Version: "v0.0.1",
