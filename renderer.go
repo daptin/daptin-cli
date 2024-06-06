@@ -2,9 +2,11 @@ package main
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
 	"golang.org/x/term"
 	"os"
+	"sort"
 	"strings"
 	"syscall"
 	"text/tabwriter"
@@ -41,7 +43,7 @@ func NewTableRenderer() *TableRenderer {
 	return &TableRenderer{}
 }
 
-func (t TableRenderer) RenderObject(data map[string]interface{}) error {
+func (t *TableRenderer) RenderObject(data map[string]interface{}) error {
 	var err error
 	for header, val := range data {
 		valString := fmt.Sprintf("%v\n", val)
@@ -53,10 +55,10 @@ func (t TableRenderer) RenderObject(data map[string]interface{}) error {
 	return err
 }
 
-func (t TableRenderer) RenderArray(data []map[string]interface{}) {
+func (t *TableRenderer) RenderArray(data []map[string]interface{}) error {
 	if len(data) == 0 {
 		fmt.Println("No data to print")
-		return
+		return nil
 	}
 
 	// Extract headers
@@ -65,14 +67,17 @@ func (t TableRenderer) RenderArray(data []map[string]interface{}) {
 		headers = append(headers, header)
 	}
 
+	sort.Strings(headers)
+
 	// Create a tabwriter
-	tw := tabwriter.NewWriter(os.Stdout, 0, 0, 1, ' ', tabwriter.AlignRight|tabwriter.Debug)
+	tw := tabwriter.NewWriter(os.Stdout, 0, 0, 1, ' ', tabwriter.Debug)
+	var err error
 
 	// Print headers
 	for _, header := range headers {
-		_, _ = fmt.Fprintf(tw, "%s\t", header)
+		_, err = fmt.Fprintf(tw, "%s\t", header)
 	}
-	_, _ = fmt.Fprintln(tw)
+	_, err = fmt.Fprintln(tw)
 
 	// Print data
 	for _, row := range data {
@@ -82,11 +87,37 @@ func (t TableRenderer) RenderArray(data []map[string]interface{}) {
 			if len(valString) > 50 {
 				valString = valString[:50] + "..."
 			}
-			_, _ = fmt.Fprintf(tw, "%s\t", valString)
+			_, err = fmt.Fprintf(tw, "%s\t", valString)
 		}
-		_, _ = fmt.Fprintln(tw)
+		_, err = fmt.Fprintln(tw)
 	}
 
 	// Flush the tabwriter
-	_ = tw.Flush()
+	err = tw.Flush()
+	return err
+}
+
+type JsonRenderer struct {
+}
+
+func NewJsonRenderer() *JsonRenderer {
+	return &JsonRenderer{}
+}
+
+func (j JsonRenderer) RenderObject(data map[string]interface{}) error {
+	jsonData, err := json.MarshalIndent(data, "", "  ")
+	if err != nil {
+		return err
+	}
+	fmt.Println(string(jsonData))
+	return nil
+}
+
+func (j JsonRenderer) RenderArray(data []map[string]interface{}) error {
+	jsonData, err := json.MarshalIndent(data, "", "  ")
+	if err != nil {
+		return err
+	}
+	fmt.Println(string(jsonData))
+	return nil
 }

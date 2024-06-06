@@ -88,22 +88,23 @@ func main() {
 				daptinClientInstance = daptinClient.NewDaptinClientWithAuthToken(daptinCliConfig.Context.Endpoint, daptinCliConfig.Context.Token, false)
 			}
 			appController.daptinClient = daptinClientInstance
-			allWorlds, err := daptinClientInstance.FindAll("world", daptinClient.DaptinQueryParameters{
-				"page[size]": 100,
-			})
-			if err != nil {
-				panic(err)
-			}
-			worlds := MapArray(allWorlds, "attributes")
+			worlds := getAllItems("world", daptinClientInstance)
 			appController.worlds = make(map[string]map[string]interface{})
 			for _, world := range worlds {
 				appController.worlds[world["table_name"].(string)] = world
 			}
 
+			actions := getAllItems("action", daptinClientInstance)
+			appController.actions = make(map[string]map[string]interface{})
+			for _, action := range actions {
+				appController.actions[action["action_name"].(string)] = action
+			}
 			outputRenderer := context.String("output")
 			switch outputRenderer {
 			case "table":
 				appController.renderer = NewTableRenderer()
+			case "json":
+				appController.renderer = NewJsonRenderer()
 			}
 
 			return nil
@@ -130,7 +131,7 @@ func main() {
 			},
 			&cli.BoolFlag{
 				Name:  "debug, v",
-				Usage: "Print trace logs",
+				Usage: "Print trace logsf",
 			},
 		},
 		Commands: []*cli.Command{
@@ -141,85 +142,21 @@ func main() {
 				Action:  appController.SetContext,
 			},
 			{
-				Name:  "signin",
-				Usage: "sign in",
-				Flags: []cli.Flag{
-					&cli.StringFlag{
-						Name:     "email",
-						Usage:    "Email",
-						Required: true,
-					},
-					&cli.StringFlag{
-						Name:     "password",
-						Required: true,
-						Usage:    "Password",
-						Hidden:   true,
-					},
-					&cli.StringFlag{
-						Name:        "endpoint",
-						Usage:       "Endpoint",
-						DefaultText: "http://localhost:6336",
-					},
-				},
+				Name:   "signin",
+				Usage:  "sign in",
+				Flags:  []cli.Flag{},
 				Action: appController.ActionSignIn,
 			},
 			{
-				Name:  "signin_with_2fa",
-				Usage: "Sign in with 2FA",
-				Flags: []cli.Flag{
-					&cli.StringFlag{
-						Name:     "email",
-						Usage:    "Email",
-						Required: true,
-					},
-					&cli.StringFlag{
-						Name:     "password",
-						Usage:    "Password",
-						Required: true,
-					},
-					&cli.StringFlag{
-						Name:     "otp",
-						Required: true,
-						Usage:    "OTP",
-					},
-					&cli.StringFlag{
-						Name:        "endpoint",
-						Usage:       "Endpoint",
-						DefaultText: "http://localhost:6336",
-					},
-				},
+				Name:   "signin_with_2fa",
+				Usage:  "Sign in with 2FA",
+				Flags:  []cli.Flag{},
 				Action: appController.ActionVerifyOtp,
 			},
 			{
-				Name:  "signup",
-				Usage: "sign in",
-				Flags: []cli.Flag{
-					&cli.StringFlag{
-						Name:     "email",
-						Usage:    "Email",
-						Required: true,
-					},
-					&cli.StringFlag{
-						Name:     "name",
-						Usage:    "Name",
-						Required: true,
-					},
-					&cli.StringFlag{
-						Name:     "password",
-						Required: true,
-						Usage:    "Password",
-					},
-					&cli.StringFlag{
-						Name:     "passwordConfirm",
-						Required: true,
-						Usage:    "Password confirm",
-					},
-					&cli.StringFlag{
-						Name:        "endpoint",
-						Usage:       "Endpoint",
-						DefaultText: "http://localhost:6336",
-					},
-				},
+				Name:   "signup",
+				Usage:  "sign in",
+				Flags:  []cli.Flag{},
 				Action: appController.ActionSignUp,
 			},
 			{
@@ -227,9 +164,10 @@ func main() {
 				Usage: "show schema",
 				Flags: []cli.Flag{
 					&cli.StringFlag{
-						Name:     "name",
-						Usage:    "Table name",
-						Required: true,
+						Name:     "columns",
+						Usage:    "comma separated column names to output",
+						Required: false,
+						Value:    "",
 					},
 				},
 				Action: appController.ActionShowSchema,
@@ -238,11 +176,6 @@ func main() {
 				Name:  "list",
 				Usage: "list entity",
 				Flags: []cli.Flag{
-					&cli.StringFlag{
-						Name:     "name",
-						Usage:    "entity name",
-						Required: false,
-					},
 					&cli.StringFlag{
 						Name:     "filter",
 						Usage:    "filter by keyword",
@@ -270,6 +203,12 @@ func main() {
 				},
 				Action: appController.ActionListEntity,
 			},
+			{
+				Name:   "execute",
+				Usage:  "execute an action",
+				Flags:  []cli.Flag{},
+				Action: appController.ActionExecute,
+			},
 		},
 		Version: "v0.0.1",
 	}
@@ -283,4 +222,15 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+}
+
+func getAllItems(entityName string, daptinClientInstance daptinClient.DaptinClient) []map[string]interface{} {
+	allWorlds, err := daptinClientInstance.FindAll(entityName, daptinClient.DaptinQueryParameters{
+		"page[size]": 500,
+	})
+	if err != nil {
+		panic(err)
+	}
+	worlds := MapArray(allWorlds, "attributes")
+	return worlds
 }
