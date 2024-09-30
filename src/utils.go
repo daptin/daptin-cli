@@ -1,4 +1,4 @@
-package main
+package src
 
 import daptinClient "github.com/daptin/daptin-go-client"
 

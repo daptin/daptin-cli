@@ -1,4 +1,4 @@
-package main
+package src
 
 import (
 	"encoding/json"
@@ -49,7 +49,17 @@ func (c *ApplicationController) SetContext(context *cli.Context) error {
 
 func (c *ApplicationController) ActionSignUp(context *cli.Context) error {
 
-	return c.ActionSignIn(context)
+	responses, err := c.daptinClient.Execute("signup", "user_account", map[string]interface{}{
+		"email":           context.Args().Get(0),
+		"password":        context.Args().Get(1),
+		"passwordConfirm": context.Args().Get(2),
+	})
+	if err != nil {
+		return err
+	}
+
+	return c.HandleActionResponse(responses)
+
 }
 
 func (c *ApplicationController) ActionSignIn(context *cli.Context) error {
@@ -96,38 +106,47 @@ func (c *ApplicationController) ActionListEntity(context *cli.Context) error {
 
 	resultSet := MapArray(result, "attributes")
 
-	//if len(colNames) == 0 {
-	//	row0 := result[0]
-	//	for key, _ := range row0 {
-	//		colNames = append(colNames, key)
-	//	}
-	//} else {
-	//	resultSet = FilterColumn(resultSet, colNames)
-	//}
-
 	if len(colNames) > 0 {
 		resultSet = FilterColumn(resultSet, colNames)
 	}
-	c.renderer.RenderArray(resultSet)
-
-	return nil
+	return c.renderer.RenderArray(resultSet)
 }
 
 func FilterColumn(array []map[string]interface{}, includedColumnNames []string) []map[string]interface{} {
-	for _, row := range array {
-		for colName, _ := range row {
-			found := false
-			for _, includedName := range includedColumnNames {
-				if colName == includedName {
-					found = true
-				}
-			}
-			if !found {
-				delete(row, colName)
-			}
-		}
+	for i, row := range array {
+		array[i] = IncludeColumnFromMap(row, includedColumnNames)
 	}
 	return array
+}
+
+func IncludeColumnFromMap(row map[string]interface{}, includedColumnNames []string) map[string]interface{} {
+	for colName, _ := range row {
+		found := false
+		for _, includedName := range includedColumnNames {
+			if colName == includedName {
+				found = true
+			}
+		}
+		if !found {
+			delete(row, colName)
+		}
+	}
+	return row
+}
+
+func ExcludeColumnFromMap(row map[string]interface{}, excludedColumnNames []string) map[string]interface{} {
+	for colName, _ := range row {
+		found := false
+		for _, includedName := range excludedColumnNames {
+			if colName == includedName {
+				found = true
+			}
+		}
+		if found {
+			delete(row, colName)
+		}
+	}
+	return row
 }
 
 func (c *ApplicationController) ActionVerifyOtp(context *cli.Context) error {
@@ -288,12 +307,12 @@ type TableInfo struct {
 	CompositeKeys          [][]string
 }
 
-func (c *ApplicationController) ActionShowSchema(context *cli.Context) (err error) {
+func (c *ApplicationController) ActionShowWorldSchema(context *cli.Context) (err error) {
 	entityName := context.Args().Get(0)
 
 	world, ok := c.worlds[entityName]
 	if !ok {
-		err := fmt.Errorf("entity %s not found", entityName)
+		err := fmt.Errorf("entity [%s] not found", entityName)
 		return err
 	}
 
@@ -336,14 +355,67 @@ func (c *ApplicationController) ActionShowSchema(context *cli.Context) (err erro
 	return err
 }
 
-func (c *ApplicationController) ActionExecute(context *cli.Context) error {
+func (c *ApplicationController) ActionShowActionSchema(context *cli.Context) error {
 	worldName := context.Args().Get(0)
 	actionName := context.Args().Get(1)
 	world, err := c.GetWorldByName(worldName)
 	if err != nil {
 		return err
 	}
-	//action, err := c.GetAction(world["reference_id"], actionName)
+	action, err := c.GetAction(world["reference_id"].(string), actionName)
+	if err != nil {
+		return err
+	}
+	var actionSchema map[string]interface{}
+	err = json.Unmarshal([]byte(action["action_schema"].(string)), &actionSchema)
+	if err != nil {
+		return err
+	}
+	inFields := actionSchema["InFields"].([]interface{})
+	fmt.Printf("InFields: %v\n", len(inFields))
+	for _, inField := range inFields {
+		inFieldMap := inField.(map[string]interface{})
+		fmt.Printf("\t%s: %s\n", inFieldMap["ColumnName"], inFieldMap["ColumnType"])
+	}
+
+	outFields := actionSchema["OutFields"].([]interface{})
+	fmt.Printf("OutFields: %v\n", len(outFields))
+	for i, outField := range outFields {
+		outFieldMap := outField.(map[string]interface{})
+		fmt.Printf("\t%d: %v\n", i, outFieldMap["Type"])
+	}
+	actionSchema = ExcludeColumnFromMap(actionSchema, []string{"InFields", "OutFields"})
+	return c.renderer.RenderObject(actionSchema)
+}
+
+func (c *ApplicationController) ActionExecute(context *cli.Context) error {
+	worldName := context.Args().Get(0)
+	actionName := context.Args().Get(1)
+	log.Printf("Execute action [%s][%s]\n", worldName, actionName)
+	world, err := c.GetWorldByName(worldName)
+	if err != nil {
+		return err
+	}
+	action, err := c.GetAction(world["reference_id"].(string), actionName)
+	if err != nil {
+		return err
+	}
+	var actionSchema map[string]interface{}
+	err = json.Unmarshal([]byte(action["action_schema"].(string)), &actionSchema)
+	if err != nil {
+		return err
+	}
+	err = c.renderer.RenderObject(actionSchema)
+
+	_, err = c.daptinClient.Execute("signin", "user_account", map[string]interface{}{
+		"email":    context.Args().Get(0),
+		"password": context.Args().Get(1),
+	})
+	//log.Printf("%v -%v", action, responses)
+	if err != nil {
+		return err
+	}
+
 	return err
 }
 
@@ -364,4 +436,34 @@ func (c *ApplicationController) GetAction(worldId string, actionName string) (ma
 		}
 	}
 	return nil, errors.New("action not found [" + actionName + "]")
+}
+
+func (c *ApplicationController) SetDaptinClient(instance daptinClient.DaptinClient) {
+	c.daptinClient = instance
+}
+
+func (appController *ApplicationController) SetWorlds(worlds []map[string]interface{}) {
+	appController.worlds = make(map[string]map[string]interface{})
+	for _, world := range worlds {
+		appController.worlds[world["table_name"].(string)] = world
+	}
+
+}
+
+func (appController *ApplicationController) SetActions(actions []map[string]interface{}) {
+	appController.actions = make(map[string]map[string]interface{})
+	for _, action := range actions {
+		appController.actions[action["action_name"].(string)] = action
+	}
+}
+
+func (appController *ApplicationController) SetRenderer(renderer Renderer) {
+	appController.renderer = renderer
+}
+
+func NewApplicationController(config DaptinCliConfig, file string) *ApplicationController {
+	return &ApplicationController{
+		daptinCliConfig: config,
+		configPath:      file,
+	}
 }

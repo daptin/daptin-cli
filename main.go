@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/daptin/daptin-cli/src"
 	daptinClient "github.com/daptin/daptin-go-client"
 	"github.com/ghodss/yaml"
 	"github.com/urfave/cli/v2"
@@ -9,22 +10,10 @@ import (
 	"os"
 )
 
-type DaptinHostEndpoint struct {
-	Name     string
-	Endpoint string
-	Token    string
-}
-
-type DaptinCliConfig struct {
-	CurrentContextName string
-	Context            DaptinHostEndpoint `json:"-"`
-	Hosts              []DaptinHostEndpoint
-}
-
 func main() {
 
 	configFile, _ := os.UserHomeDir()
-	daptinCliConfig := DaptinCliConfig{}
+	daptinCliConfig := src.DaptinCliConfig{}
 
 	configFileEnv, ok := os.LookupEnv("DAPTIN_CLI_CONFIG")
 	if ok {
@@ -44,23 +33,14 @@ func main() {
 		_, _ = os.Create(configFile)
 	}
 
-	daptinHostEndpoint := DaptinHostEndpoint{}
-
 	for _, config := range daptinCliConfig.Hosts {
 		if config.Name == daptinCliConfig.CurrentContextName {
-			daptinHostEndpoint = config
-			daptinCliConfig.Context = daptinHostEndpoint
+			daptinCliConfig.Context = config
 			break
 		}
 	}
-	if daptinHostEndpoint.Token == "" && daptinCliConfig.Context.Token != "" {
-		daptinHostEndpoint.Token = daptinCliConfig.Context.Token
-	}
 
-	appController := ApplicationController{
-		daptinCliConfig: daptinCliConfig,
-		configPath:      configFile,
-	}
+	appController := src.NewApplicationController(daptinCliConfig, configFile)
 
 	app := &cli.App{
 		Before: func(context *cli.Context) error {
@@ -68,7 +48,7 @@ func main() {
 				daptinCliConfig.Context.Endpoint = context.String("endpoint")
 			}
 			if daptinCliConfig.CurrentContextName != "" {
-				var sH DaptinHostEndpoint
+				var sH src.DaptinHostEndpoint
 				for _, h := range daptinCliConfig.Hosts {
 					if h.Name == daptinCliConfig.CurrentContextName {
 						sH = h
@@ -87,24 +67,24 @@ func main() {
 			} else {
 				daptinClientInstance = daptinClient.NewDaptinClientWithAuthToken(daptinCliConfig.Context.Endpoint, daptinCliConfig.Context.Token, false)
 			}
-			appController.daptinClient = daptinClientInstance
-			worlds := getAllItems("world", daptinClientInstance)
-			appController.worlds = make(map[string]map[string]interface{})
-			for _, world := range worlds {
-				appController.worlds[world["table_name"].(string)] = world
+			appController.SetDaptinClient(daptinClientInstance)
+			worlds, err := getAllItems("world", daptinClientInstance)
+			if err != nil {
+				return err
 			}
+			appController.SetWorlds(worlds)
 
-			actions := getAllItems("action", daptinClientInstance)
-			appController.actions = make(map[string]map[string]interface{})
-			for _, action := range actions {
-				appController.actions[action["action_name"].(string)] = action
+			actions, err := getAllItems("action", daptinClientInstance)
+			if err != nil {
+				return err
 			}
+			appController.SetActions(actions)
 			outputRenderer := context.String("output")
 			switch outputRenderer {
 			case "table":
-				appController.renderer = NewTableRenderer()
+				appController.SetRenderer(src.NewTableRenderer())
 			case "json":
-				appController.renderer = NewJsonRenderer()
+				appController.SetRenderer(src.NewJsonRenderer())
 			}
 
 			return nil
@@ -127,6 +107,7 @@ func main() {
 				Name:        "endpoint",
 				Usage:       "endpoint",
 				DefaultText: "http://localhost:6336",
+				Value:       "http://localhost:6336",
 				EnvVars:     []string{"DAPTIN_ENDPOINT"},
 			},
 			&cli.BoolFlag{
@@ -155,22 +136,32 @@ func main() {
 			},
 			{
 				Name:   "signup",
-				Usage:  "sign in",
+				Usage:  "sign up",
 				Flags:  []cli.Flag{},
 				Action: appController.ActionSignUp,
 			},
 			{
-				Name:  "schema",
+				Name:  "describe",
 				Usage: "show schema",
-				Flags: []cli.Flag{
-					&cli.StringFlag{
-						Name:     "columns",
-						Usage:    "comma separated column names to output",
-						Required: false,
-						Value:    "",
+				Subcommands: []*cli.Command{
+					{
+						Name:   "table",
+						Action: appController.ActionShowWorldSchema,
+						Flags: []cli.Flag{
+							&cli.StringFlag{
+								Name:     "columns",
+								Usage:    "comma separated column names to output",
+								Required: false,
+								Value:    "",
+							},
+						},
+					},
+					{
+						Name:   "action",
+						Action: appController.ActionShowActionSchema,
+						Flags:  []cli.Flag{},
 					},
 				},
-				Action: appController.ActionShowSchema,
 			},
 			{
 				Name:  "list",
@@ -224,13 +215,13 @@ func main() {
 	}
 }
 
-func getAllItems(entityName string, daptinClientInstance daptinClient.DaptinClient) []map[string]interface{} {
+func getAllItems(entityName string, daptinClientInstance daptinClient.DaptinClient) ([]map[string]interface{}, error) {
 	allWorlds, err := daptinClientInstance.FindAll(entityName, daptinClient.DaptinQueryParameters{
 		"page[size]": 500,
 	})
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
-	worlds := MapArray(allWorlds, "attributes")
-	return worlds
+	worlds := src.MapArray(allWorlds, "attributes")
+	return worlds, nil
 }

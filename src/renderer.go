@@ -1,4 +1,4 @@
-package main
+package src
 
 import (
 	"bufio"
@@ -46,11 +46,11 @@ func NewTableRenderer() *TableRenderer {
 func (t *TableRenderer) RenderObject(data map[string]interface{}) error {
 	var err error
 	for header, val := range data {
-		valString := fmt.Sprintf("%v\n", val)
+		valString := fmt.Sprintf("%v", val)
 		if len(valString) > 50 {
 			valString = valString[:50] + "..."
 		}
-		_, err = fmt.Fprintf(os.Stdout, "[header]: %s\n", header, valString)
+		_, err = fmt.Fprintf(os.Stdout, "[%s]: %s\n", header, valString)
 	}
 	return err
 }
