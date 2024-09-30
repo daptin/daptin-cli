@@ -75,6 +75,43 @@ func (c *ApplicationController) ActionSignIn(context *cli.Context) error {
 	return c.HandleActionResponse(responses)
 }
 
+func (c *ApplicationController) ActionGetById(context *cli.Context) error {
+
+	entityName := context.Args().Get(0)
+	referenceId := context.Args().Get(1)
+	params := daptinClient.DaptinQueryParameters{}
+	if len(referenceId) == 0 {
+		return fmt.Errorf("invalid reference_id")
+	}
+
+	columnsFromArgs := context.String("columns")
+
+	colNames := make([]string, 0)
+	if len(columnsFromArgs) > 0 {
+		cols := strings.Split(columnsFromArgs, ",")
+		for _, col := range cols {
+			colNames = append(colNames, col)
+		}
+	}
+
+	result, err := c.daptinClient.FindOne(entityName, referenceId, params)
+	if err != nil {
+		return err
+	}
+
+	if len(result) == 0 {
+		fmt.Println("No entities found")
+		return nil
+	}
+
+	resultSet := result["attributes"].(map[string]interface{})
+
+	if len(colNames) > 0 {
+		resultSet = IncludeColumnFromMap(resultSet, colNames)
+	}
+	return c.renderer.RenderObject(resultSet)
+}
+
 func (c *ApplicationController) ActionListEntity(context *cli.Context) error {
 
 	entityName := context.Args().Get(0)

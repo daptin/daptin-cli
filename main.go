@@ -195,6 +195,23 @@ func main() {
 				Action: appController.ActionListEntity,
 			},
 			{
+				Name:  "get-by-id",
+				Usage: "get table row by reference_id",
+				Flags: []cli.Flag{
+					&cli.StringFlag{
+						Name:     "reference_id",
+						Usage:    "row reference_id to fetch",
+						Required: false,
+					},
+					&cli.StringFlag{
+						Name:     "columns",
+						Usage:    "columns to print",
+						Required: false,
+					},
+				},
+				Action: appController.ActionGetById,
+			},
+			{
 				Name:   "execute",
 				Usage:  "execute an action",
 				Flags:  []cli.Flag{},
