@@ -1,0 +1,67 @@
+version: 2
+
+before:
+  hooks:
+    - go test -mod vendor ./...
+
+builds:
+  - main: .
+    binary: daptin-cli
+    env:
+      - CGO_ENABLED=0
+    ldflags:
+      - -s -w -X main.version={{.Version}}
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+archives:
+  - formats:
+      - tar.gz
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
+nfpms:
+  - package_name: daptin-cli
+    vendor: Daptin
+    homepage: https://github.com/daptin/daptin-cli
+    maintainer: "Daptin <hello@daptin.com>"
+    description: CLI client for Daptin API server
+    license: MIT
+    formats:
+      - deb
+      - rpm
+
+homebrew_casks:
+  - name: daptin-cli
+    binaries:
+      - daptin-cli
+    repository:
+      owner: daptin
+      name: homebrew-tap
+    homepage: https://github.com/daptin/daptin-cli
+    description: CLI client for Daptin API server
+
+scoops:
+  - repository:
+      owner: daptin
+      name: scoop-bucket
+    homepage: https://github.com/daptin/daptin-cli
+    description: CLI client for Daptin API server
+    license: MIT
+
+changelog:
+  use: github-native
+
+release:
+  github:
+    owner: daptin
+    name: daptin-cli

@@ -6,31 +6,42 @@ All Daptin entities are accessed uniformly via CRUD commands. All Daptin actions
 
 ## Install
 
-Download a binary from the [latest release](https://github.com/daptin/daptin-cli/releases/latest):
+### Homebrew (macOS / Linux)
 
 ```bash
-# macOS (Apple Silicon)
-curl -L https://github.com/daptin/daptin-cli/releases/latest/download/daptin-cli-darwin-arm64 -o daptin-cli
-chmod +x daptin-cli
-
-# macOS (Intel)
-curl -L https://github.com/daptin/daptin-cli/releases/latest/download/daptin-cli-darwin-amd64 -o daptin-cli
-chmod +x daptin-cli
-
-# Linux (amd64)
-curl -L https://github.com/daptin/daptin-cli/releases/latest/download/daptin-cli-linux-amd64 -o daptin-cli
-chmod +x daptin-cli
-
-# Linux (arm64)
-curl -L https://github.com/daptin/daptin-cli/releases/latest/download/daptin-cli-linux-arm64 -o daptin-cli
-chmod +x daptin-cli
+brew install daptin/tap/daptin-cli
 ```
 
-Or build from source:
+### Scoop (Windows)
+
+```powershell
+scoop bucket add daptin https://github.com/daptin/scoop-bucket
+scoop install daptin-cli
+```
+
+### Debian / Ubuntu
+
+Download the `.deb` from the [latest release](https://github.com/daptin/daptin-cli/releases/latest):
+
+```bash
+sudo dpkg -i daptin-cli_*.deb
+```
+
+### RPM (Fedora / RHEL)
+
+```bash
+sudo rpm -i daptin-cli_*.rpm
+```
+
+### Go
 
 ```bash
 go install github.com/daptin/daptin-cli@latest
 ```
+
+### Binary download
+
+Grab a binary from the [releases page](https://github.com/daptin/daptin-cli/releases/latest) for linux, macOS, or Windows (amd64 / arm64).
 
 ## Quick Start
 
