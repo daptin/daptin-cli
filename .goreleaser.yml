@@ -49,6 +49,10 @@ homebrew_casks:
       name: homebrew-tap
     homepage: https://github.com/daptin/daptin-cli
     description: CLI client for Daptin API server
+    hooks:
+      post:
+        install: |
+          system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/daptin-cli"]
 
 scoops:
   - repository:
