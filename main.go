@@ -8,6 +8,8 @@ import (
 	"github.com/daptin/daptin-cli/config"
 )
 
+var version = "dev"
+
 func main() {
 	cfgPath := config.ResolvePath()
 	cfg, err := config.Load(cfgPath)
@@ -15,7 +17,7 @@ func main() {
 		log.Fatalf("Failed to load config: %v", err)
 	}
 
-	app := cmd.NewApp(&cfg)
+	app := cmd.NewApp(&cfg, version)
 	if err := app.Run(os.Args); err != nil {
 		log.Fatal(err)
 	}

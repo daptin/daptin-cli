@@ -14,13 +14,13 @@ type AppContext struct {
 	Renderer render.Renderer
 }
 
-func NewApp(cfg *config.Config) *cli.App {
+func NewApp(cfg *config.Config, version string) *cli.App {
 	appCtx := &AppContext{Config: cfg}
 
 	app := &cli.App{
 		Name:    "daptin",
 		Usage:   "CLI client for Daptin API server",
-		Version: "v0.1.0",
+		Version: version,
 		Before: func(c *cli.Context) error {
 			// Resolve endpoint: config context > flag > default
 			endpoint := c.String("endpoint")
