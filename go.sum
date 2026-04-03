@@ -1,7 +1,5 @@
 github.com/cpuguy83/go-md2man/v2 v2.0.4 h1:wfIWP927BUkWJb2NmU/kNDYIBTh/ziUX91+lVfRxZq4=
 github.com/cpuguy83/go-md2man/v2 v2.0.4/go.mod h1:tgQtvFlXSQOSOSIRvRPT7W67SCa46tRHOmNcaadrF8o=
-github.com/daptin/daptin-go-client v0.0.5 h1:HPrV8AEZrtwax2G6wj8NT9LdZEIIdtQFst2R8O2Qy3w=
-github.com/daptin/daptin-go-client v0.0.5/go.mod h1:1KX2XEb+/jyAPL1G2MGJuVfdQf0mnM4O3hIyQw457ZU=
 github.com/daptin/daptin-go-client v0.0.6 h1:PWmPlDPqFGVWjIraDCo9ffWbfpriXcuY8PZi0Zy5XUY=
 github.com/daptin/daptin-go-client v0.0.6/go.mod h1:1KX2XEb+/jyAPL1G2MGJuVfdQf0mnM4O3hIyQw457ZU=
 github.com/ghodss/yaml v1.0.0 h1:wQHKEahhL6wmXdzwWG11gIVCkOv05bNOh+Rxn0yngAk=

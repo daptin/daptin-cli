@@ -115,6 +115,7 @@ func NewApp(cfg *config.Config, version string) *cli.App {
 			describeCommand(appCtx),
 			executeCommand(appCtx),
 			permissionCommand(appCtx),
+			wsCommand(appCtx),
 		},
 	}
 
