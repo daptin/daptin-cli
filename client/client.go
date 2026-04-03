@@ -75,6 +75,36 @@ func (e *ExtendedClient) FindOne(tableName, referenceId string, parameters dapti
 	return ParseSingleResponse(resp.Body())
 }
 
+// Update overrides the upstream to handle error responses without panicking.
+func (e *ExtendedClient) Update(tableName, referenceId string, object daptinClient.JsonApiObject) (daptinClient.JsonApiObject, error) {
+	resp, err := e.nextRequest().SetBody(object).Patch(
+		e.Endpoint + "/api/" + tableName + "/" + referenceId,
+	)
+	if err := e.checkResponse(resp, err); err != nil {
+		return nil, err
+	}
+	return ParseSingleResponse(resp.Body())
+}
+
+// Create overrides the upstream to handle error responses without panicking.
+func (e *ExtendedClient) Create(tableName string, attributes daptinClient.JsonApiObject) (daptinClient.JsonApiObject, error) {
+	resp, err := e.nextRequest().SetBody(attributes).Post(
+		e.Endpoint + "/api/" + tableName,
+	)
+	if err := e.checkResponse(resp, err); err != nil {
+		return nil, err
+	}
+	return ParseSingleResponse(resp.Body())
+}
+
+// Delete overrides the upstream to add HTTP status checking.
+func (e *ExtendedClient) Delete(tableName, referenceId string) error {
+	resp, err := e.nextRequest().Delete(
+		e.Endpoint + "/api/" + tableName + "/" + referenceId,
+	)
+	return e.checkResponse(resp, err)
+}
+
 // MapArray extracts a named sub-map from each JsonApiObject.
 func MapArray(objects []daptinClient.JsonApiObject, keyName string) []map[string]interface{} {
 	result := make([]map[string]interface{}, 0, len(objects))
