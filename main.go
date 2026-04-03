@@ -18,7 +18,7 @@ func main() {
 	}
 
 	app := cmd.NewApp(&cfg, version)
-	if err := app.Run(os.Args); err != nil {
+	if err := app.Run(cmd.ReorderArgs(os.Args)); err != nil {
 		log.Fatal(err)
 	}
 }
