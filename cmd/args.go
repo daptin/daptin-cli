@@ -10,8 +10,11 @@ var knownCommands = map[string]bool{
 	"execute": true, "help": true,
 }
 
-var knownSubcommands = map[string]bool{
-	"set": true, "add": true, "table": true, "action": true,
+// Only commands that actually have subcommands, mapped to their subcommand names.
+var commandSubcommands = map[string]map[string]bool{
+	"context":    {"set": true, "add": true, "list": true},
+	"describe":   {"table": true, "action": true},
+	"permission": {"decode": true, "encode": true},
 }
 
 // ReorderArgs moves --flags that appear after positional args to before them,
@@ -35,7 +38,8 @@ func ReorderArgs(args []string) []string {
 
 	// Start of the command's own args (after command + optional subcommand)
 	argsStart := cmdIdx + 1
-	if argsStart < len(args) && knownSubcommands[args[argsStart]] {
+	cmdName := args[cmdIdx]
+	if subs, ok := commandSubcommands[cmdName]; ok && argsStart < len(args) && subs[args[argsStart]] {
 		argsStart++
 	}
 

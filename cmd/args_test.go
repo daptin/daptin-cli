@@ -125,6 +125,28 @@ func TestReorderArgs_HelpFlag(t *testing.T) {
 	}
 }
 
+func TestReorderArgs_EntityNamedAction(t *testing.T) {
+	// "action" is both a subcommand of "describe" and a valid entity name for "list"
+	input := []string{"daptin", "list", "action", "--columns", "action_name", "--page-size", "3"}
+	expected := []string{"daptin", "list", "--columns", "action_name", "--page-size", "3", "action"}
+
+	result := ReorderArgs(input)
+	if !reflect.DeepEqual(result, expected) {
+		t.Errorf("expected %v, got %v", expected, result)
+	}
+}
+
+func TestReorderArgs_DescribeActionSubcommand(t *testing.T) {
+	// "action" as an actual subcommand of "describe" should NOT be reordered
+	input := []string{"daptin", "describe", "action", "document", "createDocument"}
+	expected := []string{"daptin", "describe", "action", "document", "createDocument"}
+
+	result := ReorderArgs(input)
+	if !reflect.DeepEqual(result, expected) {
+		t.Errorf("expected %v, got %v", expected, result)
+	}
+}
+
 func TestReorderArgs_Empty(t *testing.T) {
 	input := []string{"daptin"}
 	expected := []string{"daptin"}

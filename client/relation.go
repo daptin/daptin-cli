@@ -37,3 +37,28 @@ func (e *ExtendedClient) FindRelated(entityName, referenceId, relationColumn str
 	}
 	return result, nil
 }
+
+// AddRelation associates a target entity with a source via a relationship.
+// POST /api/{entity}/{referenceId}/{relationColumn}
+func (e *ExtendedClient) AddRelation(entityName, referenceId, relationColumn, targetType, targetRefId string) error {
+	body := map[string]interface{}{
+		"data": map[string]interface{}{
+			"type": targetType,
+			"id":   targetRefId,
+		},
+	}
+
+	resp, err := e.nextRequest().SetBody(body).Post(
+		e.Endpoint + "/api/" + entityName + "/" + referenceId + "/" + relationColumn,
+	)
+	return e.checkResponse(resp, err)
+}
+
+// RemoveRelation removes a relationship association.
+// DELETE /api/{entity}/{referenceId}/{relationColumn}/{targetRefId}
+func (e *ExtendedClient) RemoveRelation(entityName, referenceId, relationColumn, targetRefId string) error {
+	resp, err := e.nextRequest().Delete(
+		e.Endpoint + "/api/" + entityName + "/" + referenceId + "/" + relationColumn + "/" + targetRefId,
+	)
+	return e.checkResponse(resp, err)
+}

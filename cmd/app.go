@@ -82,8 +82,11 @@ func NewApp(cfg *config.Config, version string) *cli.App {
 			updateCommand(appCtx),
 			deleteCommand(appCtx),
 			relatedCommand(appCtx),
+			relateCommand(appCtx),
+			unrelateCommand(appCtx),
 			describeCommand(appCtx),
 			executeCommand(appCtx),
+			permissionCommand(appCtx),
 		},
 	}
 
