@@ -48,7 +48,8 @@ func unrelateCommand(appCtx *AppContext) *cli.Command {
 				return fmt.Errorf("usage: unrelate <entity> <reference_id> <relation_column> <target_ref_id>")
 			}
 
-			err := appCtx.Client.RemoveRelation(entity, refId, relation, targetRefId)
+			targetType := strings.TrimSuffix(relation, "_id")
+			err := appCtx.Client.RemoveRelation(entity, refId, relation, targetType, targetRefId)
 			if err != nil {
 				return err
 			}
