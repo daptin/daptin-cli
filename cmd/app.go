@@ -1,6 +1,9 @@
 package cmd
 
 import (
+	"fmt"
+	"os"
+
 	"github.com/daptin/daptin-cli/client"
 	"github.com/daptin/daptin-cli/config"
 	"github.com/daptin/daptin-cli/render"
@@ -22,20 +25,28 @@ func NewApp(cfg *config.Config, version string) *cli.App {
 		Usage:   "CLI client for Daptin API server",
 		Version: version,
 		Before: func(c *cli.Context) error {
-			// Resolve endpoint: config context > flag > default
 			endpoint := c.String("endpoint")
 			authToken := ""
-			if cfg.CurrentContext != "" {
+			contextName := endpoint
+
+			// Explicit --endpoint flag wins over saved context
+			if c.IsSet("endpoint") {
+				contextName = endpoint
+			} else if cfg.CurrentContext != "" {
 				if host, err := cfg.ActiveHost(); err == nil {
 					endpoint = host.Endpoint
 					authToken = host.Token
+					contextName = host.Name
 				}
-			}
-			if ep := c.String("endpoint"); ep != "http://localhost:6336" {
-				endpoint = ep
 			}
 
 			appCtx.Client = client.New(endpoint, authToken, c.Bool("debug"))
+
+			authed := ""
+			if authToken != "" {
+				authed = ", authenticated"
+			}
+			fmt.Fprintf(os.Stderr, "Using %s (%s%s)\n", contextName, endpoint, authed)
 
 			switch c.String("output") {
 			case "json":
