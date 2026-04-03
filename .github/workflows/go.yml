@@ -17,10 +17,34 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
-      - run: go test -mod vendor -race ./...
+      - name: Unit tests
+        run: go test -mod vendor -race ./...
+
+  e2e:
+    runs-on: ubuntu-latest
+    services:
+      daptin:
+        image: daptin/daptin
+        ports:
+          - 6336:6336
+        options: >-
+          --health-cmd "curl -sf http://localhost:6336/api/world || exit 1"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+          --health-start-period 15s
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - name: Build
+        run: go build -mod vendor -o daptin-cli .
+      - name: E2E tests
+        run: DAPTIN_ENDPOINT=http://localhost:6336 bash scripts/e2e.sh
 
   release:
-    needs: test
+    needs: [test, e2e]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:

@@ -1,0 +1,23 @@
+# Build output
+out/
+dist/
+daptin-cli
+
+# IDE
+.idea/
+*.swp
+*.swo
+*~
+
+# Local config
+cfg.yaml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test
+coverage.xml
+profile.cov
+junit-report.xml
+checkstyle-report.xml
