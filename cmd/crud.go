@@ -78,6 +78,9 @@ func listCommand(appCtx *AppContext) *cli.Command {
 			}
 
 			rows := client.MapArray(result, "attributes")
+			if appCtx.Quiet {
+				return printRefs(rows)
+			}
 			if cols := c.String("columns"); cols != "" {
 				rows = render.FilterColumns(rows, strings.Split(cols, ","))
 			}
@@ -115,6 +118,9 @@ func getCommand(appCtx *AppContext) *cli.Command {
 				return nil
 			}
 
+			if appCtx.Quiet {
+				return printRef(row)
+			}
 			if cols := c.String("columns"); cols != "" {
 				row = render.IncludeColumns(row, strings.Split(cols, ","))
 			}
@@ -151,10 +157,14 @@ func createCommand(appCtx *AppContext) *cli.Command {
 				return err
 			}
 
-			if data, ok := result["attributes"].(map[string]interface{}); ok {
-				return appCtx.Renderer.RenderObject(data)
+			data, _ := result["attributes"].(map[string]interface{})
+			if data == nil {
+				data = result
 			}
-			return appCtx.Renderer.RenderObject(result)
+			if appCtx.Quiet {
+				return printRef(data)
+			}
+			return appCtx.Renderer.RenderObject(data)
 		},
 	}
 }
@@ -189,10 +199,14 @@ func updateCommand(appCtx *AppContext) *cli.Command {
 				return err
 			}
 
-			if data, ok := result["attributes"].(map[string]interface{}); ok {
-				return appCtx.Renderer.RenderObject(data)
+			data, _ := result["attributes"].(map[string]interface{})
+			if data == nil {
+				data = result
 			}
-			return appCtx.Renderer.RenderObject(result)
+			if appCtx.Quiet {
+				return printRef(data)
+			}
+			return appCtx.Renderer.RenderObject(data)
 		},
 	}
 }
@@ -244,12 +258,33 @@ func relatedCommand(appCtx *AppContext) *cli.Command {
 			}
 
 			rows := client.MapArray(result, "attributes")
+			if appCtx.Quiet {
+				return printRefs(rows)
+			}
 			if cols := c.String("columns"); cols != "" {
 				rows = render.FilterColumns(rows, strings.Split(cols, ","))
 			}
 			return appCtx.Renderer.RenderArray(rows)
 		},
 	}
+}
+
+// printRef outputs only the reference_id from a single row.
+func printRef(row map[string]interface{}) error {
+	if ref, ok := row["reference_id"].(string); ok {
+		fmt.Println(ref)
+	}
+	return nil
+}
+
+// printRefs outputs one reference_id per line from a list of rows.
+func printRefs(rows []map[string]interface{}) error {
+	for _, row := range rows {
+		if ref, ok := row["reference_id"].(string); ok {
+			fmt.Println(ref)
+		}
+	}
+	return nil
 }
 
 // parseAttributes parses [key=val ...] args or a single JSON string into a map.

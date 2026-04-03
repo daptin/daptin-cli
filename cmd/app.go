@@ -15,6 +15,7 @@ type AppContext struct {
 	Client   *client.ExtendedClient
 	Config   *config.Config
 	Renderer render.Renderer
+	Quiet    bool
 }
 
 func NewApp(cfg *config.Config, version string) *cli.App {
@@ -41,18 +42,25 @@ func NewApp(cfg *config.Config, version string) *cli.App {
 			}
 
 			appCtx.Client = client.New(endpoint, authToken, c.Bool("debug"))
+			appCtx.Quiet = c.Bool("quiet")
 
-			authed := ""
-			if authToken != "" {
-				authed = ", authenticated"
+			if !appCtx.Quiet {
+				authed := ""
+				if authToken != "" {
+					authed = ", authenticated"
+				}
+				fmt.Fprintf(os.Stderr, "Using %s (%s%s)\n", contextName, endpoint, authed)
 			}
-			fmt.Fprintf(os.Stderr, "Using %s (%s%s)\n", contextName, endpoint, authed)
 
 			switch c.String("output") {
 			case "json":
 				appCtx.Renderer = render.NewJsonRenderer()
 			default:
-				appCtx.Renderer = render.NewTableRenderer()
+				if c.Bool("no-truncate") {
+					appCtx.Renderer = render.NewTableRendererNoTruncate()
+				} else {
+					appCtx.Renderer = render.NewTableRenderer()
+				}
 			}
 
 			return nil
@@ -83,6 +91,15 @@ func NewApp(cfg *config.Config, version string) *cli.App {
 			&cli.BoolFlag{
 				Name:  "debug",
 				Usage: "Enable debug output",
+			},
+			&cli.BoolFlag{
+				Name:  "no-truncate",
+				Usage: "Show full values in table output (no 50-char truncation)",
+			},
+			&cli.BoolFlag{
+				Name:    "quiet",
+				Aliases: []string{"q"},
+				Usage:   "Output only reference_id (for scripting)",
 			},
 		},
 		Commands: []*cli.Command{

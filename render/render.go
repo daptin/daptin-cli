@@ -48,19 +48,28 @@ func ExcludeColumns(row map[string]interface{}, columns []string) map[string]int
 }
 
 // TableRenderer outputs data as an aligned text table.
-type TableRenderer struct{}
+type TableRenderer struct {
+	MaxWidth int // 0 means no truncation
+}
 
 func NewTableRenderer() *TableRenderer {
-	return &TableRenderer{}
+	return &TableRenderer{MaxWidth: 50}
+}
+
+func NewTableRendererNoTruncate() *TableRenderer {
+	return &TableRenderer{MaxWidth: 0}
+}
+
+func (t *TableRenderer) truncate(s string) string {
+	if t.MaxWidth > 0 && len(s) > t.MaxWidth {
+		return s[:t.MaxWidth] + "..."
+	}
+	return s
 }
 
 func (t *TableRenderer) RenderObject(data map[string]interface{}) error {
 	for header, val := range data {
-		valString := fmt.Sprintf("%v", val)
-		if len(valString) > 50 {
-			valString = valString[:50] + "..."
-		}
-		fmt.Fprintf(os.Stdout, "[%s]: %s\n", header, valString)
+		fmt.Fprintf(os.Stdout, "[%s]: %s\n", header, t.truncate(fmt.Sprintf("%v", val)))
 	}
 	return nil
 }
@@ -86,12 +95,7 @@ func (t *TableRenderer) RenderArray(data []map[string]interface{}) error {
 
 	for _, row := range data {
 		for _, header := range headers {
-			val := row[header]
-			valString := fmt.Sprintf("%v", val)
-			if len(valString) > 50 {
-				valString = valString[:50] + "..."
-			}
-			fmt.Fprintf(tw, "%s\t", valString)
+			fmt.Fprintf(tw, "%s\t", t.truncate(fmt.Sprintf("%v", row[header])))
 		}
 		fmt.Fprintln(tw)
 	}

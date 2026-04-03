@@ -8,6 +8,10 @@ CLI="${DAPTIN_CLI:-./daptin-cli}"
 PASS=0
 FAIL=0
 
+# Use isolated config so e2e tests don't mutate user's ~/.daptin/config.yaml
+export DAPTIN_CLI_CONFIG="/tmp/daptin-e2e-config-$$.yaml"
+trap "rm -f $DAPTIN_CLI_CONFIG" EXIT
+
 # Build if binary doesn't exist
 if [ ! -f "$CLI" ]; then
   echo "Building $CLI..."
