@@ -129,10 +129,32 @@ func TestFilterToJSON(t *testing.T) {
 	if len(parsed) != 2 {
 		t.Fatalf("expected 2 entries, got %d", len(parsed))
 	}
-	if parsed[0]["column"] != "name" {
-		t.Errorf("expected name, got %v", parsed[0]["column"])
+	// Operators pass through as-is — caller supplies % wildcards for like/contains
+	if parsed[0]["operator"] != "contains" {
+		t.Errorf("expected contains, got %v", parsed[0]["operator"])
+	}
+	if parsed[0]["value"] != "foo" {
+		t.Errorf("expected foo, got %v", parsed[0]["value"])
 	}
 	if parsed[1]["operator"] != "is true" {
 		t.Errorf("expected is true, got %v", parsed[1]["operator"])
+	}
+}
+
+func TestFilterToJSON_LikeWithWildcards(t *testing.T) {
+	// Caller explicitly passes % wildcards for partial matching
+	filters := []FilterClause{
+		{Column: "name", Operator: "like", Value: "%doc%"},
+	}
+	jsonStr := FilterToJSON(filters)
+
+	var parsed []map[string]interface{}
+	json.Unmarshal([]byte(jsonStr), &parsed)
+
+	if parsed[0]["operator"] != "like" {
+		t.Errorf("expected like, got %v", parsed[0]["operator"])
+	}
+	if parsed[0]["value"] != "%doc%" {
+		t.Errorf("expected %%doc%%, got %v", parsed[0]["value"])
 	}
 }
