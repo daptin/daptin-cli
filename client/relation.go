@@ -3,6 +3,7 @@ package client
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 
 	daptinClient "github.com/daptin/daptin-go-client"
 )
@@ -13,6 +14,7 @@ func (e *ExtendedClient) FindRelated(entityName, referenceId, relationColumn str
 	req := e.nextRequest()
 
 	u := e.Endpoint + "/api/" + entityName + "/" + referenceId + "/" + relationColumn
+	slog.Debug("FindRelated", "url", u)
 
 	resp, err := req.Get(u)
 	if err := e.checkResponse(resp, err); err != nil {
@@ -41,6 +43,7 @@ func (e *ExtendedClient) FindRelated(entityName, referenceId, relationColumn str
 // AddRelation associates a target entity with a source via JSON:API relationships endpoint.
 // PATCH /api/{entity}/{referenceId}/relationships/{relationColumn}
 func (e *ExtendedClient) AddRelation(entityName, referenceId, relationColumn, targetType, targetRefId string) error {
+	slog.Debug("AddRelation", "entity", entityName, "ref", referenceId, "relation", relationColumn, "target_type", targetType, "target_ref", targetRefId)
 	body := map[string]interface{}{
 		"data": []map[string]interface{}{
 			{"type": targetType, "id": targetRefId},
@@ -56,6 +59,7 @@ func (e *ExtendedClient) AddRelation(entityName, referenceId, relationColumn, ta
 // RemoveRelation removes a relationship association via JSON:API relationships endpoint.
 // DELETE /api/{entity}/{referenceId}/relationships/{relationColumn}
 func (e *ExtendedClient) RemoveRelation(entityName, referenceId, relationColumn, targetType, targetRefId string) error {
+	slog.Debug("RemoveRelation", "entity", entityName, "ref", referenceId, "relation", relationColumn, "target_type", targetType, "target_ref", targetRefId)
 	body := map[string]interface{}{
 		"data": []map[string]interface{}{
 			{"type": targetType, "id": targetRefId},

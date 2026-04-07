@@ -3,6 +3,7 @@ package client
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/url"
 )
 
@@ -20,6 +21,7 @@ func ParseSingleResponse(body []byte) (map[string]interface{}, error) {
 	if !ok || data == nil {
 		return nil, ErrNotFound
 	}
+	slog.Debug("parsed single response", "keys", len(data))
 	return data, nil
 }
 
@@ -42,6 +44,7 @@ func ParseListResponse(body []byte) ([]map[string]interface{}, error) {
 			result = append(result, m)
 		}
 	}
+	slog.Debug("parsed list response", "count", len(result))
 	return result, nil
 }
 
@@ -63,6 +66,9 @@ type ActionResponse struct {
 // CheckStatusCode maps HTTP status codes to sentinel errors.
 // Pure function.
 func CheckStatusCode(code int, body string) error {
+	if code >= 400 {
+		slog.Debug("non-success status code", "status", code)
+	}
 	switch {
 	case code == 401:
 		return fmt.Errorf("%w: %s", ErrUnauthorized, body)
@@ -87,5 +93,6 @@ func BuildFindOneURL(endpoint, tableName, referenceId string, parameters map[str
 		}
 		u = u + "?" + params.Encode()
 	}
+	slog.Debug("built FindOne URL", "url", u)
 	return u
 }

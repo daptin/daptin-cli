@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 
 	daptinClient "github.com/daptin/daptin-go-client"
 )
@@ -29,6 +30,7 @@ func ProcessResponses(responses []daptinClient.DaptinActionResponse) []ResponseE
 	effects := make([]ResponseEffect, 0, len(responses))
 
 	for _, r := range responses {
+		slog.Debug("processing response", "type", r.ResponseType)
 		switch r.ResponseType {
 		case "client.store.set":
 			key, _ := r.Attributes["key"].(string)
@@ -148,6 +150,7 @@ func FindActionRefId(actionAttrs []map[string]interface{}, worldRefId, actionNam
 // The server returns the schema as base64 in a client.file.download response.
 // Pure function.
 func DecodeActionSchemaResponse(responses []daptinClient.DaptinActionResponse) ([]map[string]interface{}, error) {
+	slog.Debug("decoding action schema response", "response_count", len(responses))
 	for _, r := range responses {
 		if r.ResponseType == "client.file.download" {
 			contentB64, _ := r.Attributes["content"].(string)

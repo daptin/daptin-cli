@@ -3,6 +3,7 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"strings"
 
@@ -53,6 +54,7 @@ func describeCommand(appCtx *AppContext) *cli.Command {
 }
 
 func describeTable(appCtx *AppContext, entityName, columnsFlag string) error {
+	slog.Info("describe table", "entity", entityName)
 	// Fetch the world definition on demand
 	worlds, err := appCtx.Client.FindAll("world", daptinClient.DaptinQueryParameters{
 		"page[size]": 500,
@@ -74,6 +76,7 @@ func describeTable(appCtx *AppContext, entityName, columnsFlag string) error {
 	if world == nil {
 		return fmt.Errorf("entity %q not found", entityName)
 	}
+	slog.Debug("found world", "entity", entityName, "reference_id", worldRefId)
 
 	schemaJson, ok := world["world_schema_json"].(string)
 	if !ok {
@@ -84,6 +87,7 @@ func describeTable(appCtx *AppContext, entityName, columnsFlag string) error {
 	if err := json.Unmarshal([]byte(schemaJson), &schema); err != nil {
 		return err
 	}
+	slog.Debug("parsed schema", "entity", entityName)
 
 	columnsData, ok := schema["Columns"].([]interface{})
 	if !ok {
@@ -122,6 +126,7 @@ func describeTable(appCtx *AppContext, entityName, columnsFlag string) error {
 			worldActions = append(worldActions, a)
 		}
 	}
+	slog.Debug("found actions", "entity", entityName, "count", len(worldActions))
 
 	fmt.Fprintf(os.Stdout, "\nActions: %d\n", len(worldActions))
 	if len(worldActions) > 0 {

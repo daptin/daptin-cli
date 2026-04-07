@@ -3,6 +3,7 @@ package render
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"sort"
 	"text/tabwriter"
@@ -68,6 +69,7 @@ func (t *TableRenderer) truncate(s string) string {
 }
 
 func (t *TableRenderer) RenderObject(data map[string]interface{}) error {
+	slog.Debug("render table object", "columns", len(data))
 	for header, val := range data {
 		fmt.Fprintf(os.Stdout, "[%s]: %s\n", header, t.truncate(fmt.Sprintf("%v", val)))
 	}
@@ -75,6 +77,7 @@ func (t *TableRenderer) RenderObject(data map[string]interface{}) error {
 }
 
 func (t *TableRenderer) RenderArray(data []map[string]interface{}) error {
+	slog.Debug("render table array", "rows", len(data))
 	if len(data) == 0 {
 		fmt.Println("No data to print")
 		return nil
@@ -111,6 +114,7 @@ func NewJsonRenderer() *JsonRenderer {
 }
 
 func (j *JsonRenderer) RenderObject(data map[string]interface{}) error {
+	slog.Debug("render json object", "columns", len(data))
 	jsonData, err := json.MarshalIndent(data, "", "  ")
 	if err != nil {
 		return err
@@ -120,6 +124,7 @@ func (j *JsonRenderer) RenderObject(data map[string]interface{}) error {
 }
 
 func (j *JsonRenderer) RenderArray(data []map[string]interface{}) error {
+	slog.Debug("render json array", "rows", len(data))
 	jsonData, err := json.MarshalIndent(data, "", "  ")
 	if err != nil {
 		return err

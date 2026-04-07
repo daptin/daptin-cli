@@ -3,6 +3,7 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/daptin/daptin-cli/client"
@@ -49,6 +50,7 @@ func listCommand(appCtx *AppContext) *cli.Command {
 			if entityName == "" {
 				return fmt.Errorf("entity name required")
 			}
+			slog.Info("list", "entity", entityName, "page", c.Int("page"), "page_size", c.Int("page-size"))
 
 			params := daptinClient.DaptinQueryParameters{
 				"page[size]":   c.Int("page-size"),
@@ -78,11 +80,14 @@ func listCommand(appCtx *AppContext) *cli.Command {
 			}
 
 			rows := client.MapArray(result, "attributes")
+			slog.Debug("list results", "count", len(rows))
 			if appCtx.Quiet {
 				return printRefs(rows)
 			}
 			if cols := c.String("columns"); cols != "" {
-				rows = render.FilterColumns(rows, strings.Split(cols, ","))
+				colList := strings.Split(cols, ",")
+				slog.Debug("filtering columns", "columns", colList)
+				rows = render.FilterColumns(rows, colList)
 			}
 			return appCtx.Renderer.RenderArray(rows)
 		},
@@ -106,6 +111,7 @@ func getCommand(appCtx *AppContext) *cli.Command {
 			if entityName == "" || referenceId == "" {
 				return fmt.Errorf("usage: get <entity> <reference_id>")
 			}
+			slog.Info("get", "entity", entityName, "reference_id", referenceId)
 
 			result, err := appCtx.Client.FindOne(entityName, referenceId, nil)
 			if err != nil {
@@ -139,6 +145,7 @@ func createCommand(appCtx *AppContext) *cli.Command {
 			if entityName == "" {
 				return fmt.Errorf("entity name required")
 			}
+			slog.Info("create", "entity", entityName)
 
 			attrs, err := parseAttributes(c.Args().Slice()[1:])
 			if err != nil {
@@ -180,6 +187,7 @@ func updateCommand(appCtx *AppContext) *cli.Command {
 			if entityName == "" || referenceId == "" {
 				return fmt.Errorf("usage: update <entity> <reference_id> [key=val ...]")
 			}
+			slog.Info("update", "entity", entityName, "reference_id", referenceId)
 
 			attrs, err := parseAttributes(c.Args().Slice()[2:])
 			if err != nil {
@@ -222,6 +230,7 @@ func deleteCommand(appCtx *AppContext) *cli.Command {
 			if entityName == "" || referenceId == "" {
 				return fmt.Errorf("usage: delete <entity> <reference_id>")
 			}
+			slog.Info("delete", "entity", entityName, "reference_id", referenceId)
 
 			err := appCtx.Client.Delete(entityName, referenceId)
 			if err != nil {
@@ -251,6 +260,7 @@ func relatedCommand(appCtx *AppContext) *cli.Command {
 			if entityName == "" || referenceId == "" || relation == "" {
 				return fmt.Errorf("usage: related <entity> <reference_id> <relation>")
 			}
+			slog.Info("related", "entity", entityName, "reference_id", referenceId, "relation", relation)
 
 			result, err := appCtx.Client.FindRelated(entityName, referenceId, relation, nil)
 			if err != nil {

@@ -2,6 +2,7 @@ package client
 
 import (
 	"errors"
+	"log/slog"
 
 	daptinClient "github.com/daptin/daptin-go-client"
 	"github.com/go-resty/resty/v2"
@@ -24,6 +25,8 @@ type ExtendedClient struct {
 }
 
 func New(endpoint, authToken string, debug bool) *ExtendedClient {
+	slog.Debug("creating client", "endpoint", endpoint, "token_present", authToken != "", "debug", debug)
+
 	var upstream daptinClient.DaptinClient
 	if authToken == "" {
 		upstream = daptinClient.NewDaptinClient(endpoint, debug)
@@ -52,6 +55,7 @@ func (e *ExtendedClient) nextRequest() *resty.Request {
 	if e.AuthToken != "" {
 		req.SetAuthToken(e.AuthToken)
 	}
+	slog.Debug("preparing request", "auth_header_set", e.AuthToken != "")
 	return req
 }
 
@@ -59,6 +63,7 @@ func (e *ExtendedClient) checkResponse(resp *resty.Response, err error) error {
 	if err != nil {
 		return err
 	}
+	slog.Debug("response received", "status", resp.StatusCode())
 	return CheckStatusCode(resp.StatusCode(), resp.String())
 }
 
@@ -66,6 +71,7 @@ func (e *ExtendedClient) checkResponse(resp *resty.Response, err error) error {
 // (upstream appends params without a ? separator).
 func (e *ExtendedClient) FindOne(tableName, referenceId string, parameters daptinClient.DaptinQueryParameters) (daptinClient.JsonApiObject, error) {
 	u := BuildFindOneURL(e.Endpoint, tableName, referenceId, parameters)
+	slog.Debug("FindOne", "url", u)
 
 	resp, err := e.nextRequest().Get(u)
 	if err := e.checkResponse(resp, err); err != nil {
@@ -77,9 +83,9 @@ func (e *ExtendedClient) FindOne(tableName, referenceId string, parameters dapti
 
 // Update overrides the upstream to handle error responses without panicking.
 func (e *ExtendedClient) Update(tableName, referenceId string, object daptinClient.JsonApiObject) (daptinClient.JsonApiObject, error) {
-	resp, err := e.nextRequest().SetBody(object).Patch(
-		e.Endpoint + "/api/" + tableName + "/" + referenceId,
-	)
+	u := e.Endpoint + "/api/" + tableName + "/" + referenceId
+	slog.Debug("Update", "url", u)
+	resp, err := e.nextRequest().SetBody(object).Patch(u)
 	if err := e.checkResponse(resp, err); err != nil {
 		return nil, err
 	}
@@ -88,9 +94,9 @@ func (e *ExtendedClient) Update(tableName, referenceId string, object daptinClie
 
 // Create overrides the upstream to handle error responses without panicking.
 func (e *ExtendedClient) Create(tableName string, attributes daptinClient.JsonApiObject) (daptinClient.JsonApiObject, error) {
-	resp, err := e.nextRequest().SetBody(attributes).Post(
-		e.Endpoint + "/api/" + tableName,
-	)
+	u := e.Endpoint + "/api/" + tableName
+	slog.Debug("Create", "url", u)
+	resp, err := e.nextRequest().SetBody(attributes).Post(u)
 	if err := e.checkResponse(resp, err); err != nil {
 		return nil, err
 	}
@@ -99,9 +105,9 @@ func (e *ExtendedClient) Create(tableName string, attributes daptinClient.JsonAp
 
 // Delete overrides the upstream to add HTTP status checking.
 func (e *ExtendedClient) Delete(tableName, referenceId string) error {
-	resp, err := e.nextRequest().Delete(
-		e.Endpoint + "/api/" + tableName + "/" + referenceId,
-	)
+	u := e.Endpoint + "/api/" + tableName + "/" + referenceId
+	slog.Debug("Delete", "url", u)
+	resp, err := e.nextRequest().Delete(u)
 	return e.checkResponse(resp, err)
 }
 

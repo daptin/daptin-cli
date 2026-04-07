@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"log/slog"
 
 	"github.com/daptin/daptin-cli/config"
 	"github.com/urfave/cli/v2"
@@ -21,6 +22,7 @@ func contextCommand(appCtx *AppContext) *cli.Command {
 					if name == "" {
 						return fmt.Errorf("context name required")
 					}
+					slog.Info("context set", "name", name)
 					if err := appCtx.Config.SetContext(name); err != nil {
 						return err
 					}
@@ -37,6 +39,7 @@ func contextCommand(appCtx *AppContext) *cli.Command {
 					if name == "" || endpoint == "" {
 						return fmt.Errorf("usage: context add <name> <endpoint>")
 					}
+					slog.Info("context add", "name", name, "endpoint", endpoint)
 					appCtx.Config.UpsertHost(config.HostEndpoint{
 						Name:     name,
 						Endpoint: endpoint,
@@ -48,6 +51,7 @@ func contextCommand(appCtx *AppContext) *cli.Command {
 				Name:  "list",
 				Usage: "List all contexts",
 				Action: func(c *cli.Context) error {
+					slog.Info("context list", "count", len(appCtx.Config.Hosts))
 					if len(appCtx.Config.Hosts) == 0 {
 						fmt.Println("No contexts configured")
 						return nil
@@ -61,6 +65,7 @@ func contextCommand(appCtx *AppContext) *cli.Command {
 						if h.Token != "" {
 							hasToken = " (authenticated)"
 						}
+						slog.Debug("context entry", "name", h.Name, "endpoint", h.Endpoint, "token_present", h.Token != "")
 						fmt.Printf("%s%s  %s%s\n", marker, h.Name, h.Endpoint, hasToken)
 					}
 					return nil

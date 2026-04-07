@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/urfave/cli/v2"
@@ -21,8 +22,10 @@ func relateCommand(appCtx *AppContext) *cli.Command {
 				return fmt.Errorf("usage: relate <entity> <reference_id> <relation_column> <target_ref_id>")
 			}
 
-			// Derive target type from relation column name (e.g., "usergroup_id" → "usergroup")
+			slog.Info("relate", "entity", entity, "reference_id", refId, "relation", relation)
+			// Derive target type from relation column name (e.g., "usergroup_id" -> "usergroup")
 			targetType := strings.TrimSuffix(relation, "_id")
+			slog.Debug("derived target type", "target_type", targetType)
 
 			err := appCtx.Client.AddRelation(entity, refId, relation, targetType, targetRefId)
 			if err != nil {
@@ -48,7 +51,9 @@ func unrelateCommand(appCtx *AppContext) *cli.Command {
 				return fmt.Errorf("usage: unrelate <entity> <reference_id> <relation_column> <target_ref_id>")
 			}
 
+			slog.Info("unrelate", "entity", entity, "reference_id", refId, "relation", relation)
 			targetType := strings.TrimSuffix(relation, "_id")
+			slog.Debug("derived target type", "target_type", targetType)
 			err := appCtx.Client.RemoveRelation(entity, refId, relation, targetType, targetRefId)
 			if err != nil {
 				return err

@@ -3,6 +3,7 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/signal"
 	"strings"
@@ -32,6 +33,7 @@ func wsListenCommand(appCtx *AppContext) *cli.Command {
 		Name:  "listen",
 		Usage: "Open a WebSocket connection and print all received events",
 		Action: func(c *cli.Context) error {
+			slog.Info("ws listen", "endpoint", appCtx.Client.Endpoint)
 			ws, err := client.DialWebSocket(appCtx.Client.Endpoint, appCtx.Client.AuthToken)
 			if err != nil {
 				return err
@@ -59,6 +61,7 @@ func wsListenCommand(appCtx *AppContext) *cli.Command {
 				if msg["type"] == "pong" {
 					continue
 				}
+				slog.Debug("ws listen event", "type", msg["type"])
 				line, err := client.EventToJSONLine(msg)
 				if err != nil {
 					continue
@@ -85,6 +88,7 @@ func wsSubscribeCommand(appCtx *AppContext) *cli.Command {
 				return fmt.Errorf("at least one topic name required")
 			}
 			topics := c.Args().Slice()
+			slog.Info("ws subscribe", "topics", topics)
 
 			ws, err := client.DialWebSocket(appCtx.Client.Endpoint, appCtx.Client.AuthToken)
 			if err != nil {
@@ -148,6 +152,7 @@ func wsSubscribeCommand(appCtx *AppContext) *cli.Command {
 				if msg["type"] == "pong" {
 					continue
 				}
+				slog.Debug("ws subscribe event", "type", msg["type"])
 				line, err := client.EventToJSONLine(msg)
 				if err != nil {
 					continue
@@ -200,6 +205,7 @@ func wsPublishCommand(appCtx *AppContext) *cli.Command {
 			if topic == "" || msgStr == "" {
 				return fmt.Errorf("usage: ws publish <topic> <json-message>")
 			}
+			slog.Info("ws publish", "topic", topic)
 
 			var msgPayload map[string]interface{}
 			if err := json.Unmarshal([]byte(msgStr), &msgPayload); err != nil {
@@ -248,6 +254,7 @@ func wsTopicCommand(appCtx *AppContext) *cli.Command {
 					if name == "" {
 						return fmt.Errorf("topic name required")
 					}
+					slog.Info("ws topic create", "name", name)
 
 					ws, err := client.DialWebSocket(appCtx.Client.Endpoint, appCtx.Client.AuthToken)
 					if err != nil {
@@ -282,6 +289,7 @@ func wsTopicCommand(appCtx *AppContext) *cli.Command {
 					if name == "" {
 						return fmt.Errorf("topic name required")
 					}
+					slog.Info("ws topic delete", "name", name)
 
 					ws, err := client.DialWebSocket(appCtx.Client.Endpoint, appCtx.Client.AuthToken)
 					if err != nil {
@@ -388,6 +396,7 @@ func wsVerifyCommand(appCtx *AppContext) *cli.Command {
 			if len(parts) != 2 {
 				return fmt.Errorf("exactly 2 endpoints required, got %d", len(parts))
 			}
+			slog.Info("ws verify", "endpoints", parts)
 			epA := strings.TrimSpace(parts[0])
 			epB := strings.TrimSpace(parts[1])
 
@@ -397,6 +406,7 @@ func wsVerifyCommand(appCtx *AppContext) *cli.Command {
 			fmt.Fprintf(os.Stderr, "Connecting to %s... ", epA)
 			wsA, err := client.DialWebSocket(epA, appCtx.Client.AuthToken)
 			if err != nil {
+				slog.Warn("ws verify connect failed", "endpoint", epA, "error", err)
 				fmt.Fprintf(os.Stderr, "FAIL\n")
 				return err
 			}
@@ -406,6 +416,7 @@ func wsVerifyCommand(appCtx *AppContext) *cli.Command {
 			fmt.Fprintf(os.Stderr, "Connecting to %s... ", epB)
 			wsB, err := client.DialWebSocket(epB, appCtx.Client.AuthToken)
 			if err != nil {
+				slog.Warn("ws verify connect failed", "endpoint", epB, "error", err)
 				fmt.Fprintf(os.Stderr, "FAIL\n")
 				return err
 			}

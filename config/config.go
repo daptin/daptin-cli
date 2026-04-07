@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 
@@ -81,9 +82,11 @@ func (c Config) Path() string {
 }
 
 func Load(path string) (Config, error) {
+	slog.Debug("loading config", "path", path)
 	cfg := Config{path: path}
 
 	if _, err := os.Stat(path); err != nil {
+		slog.Debug("config file not found, creating", "path", path)
 		_ = os.MkdirAll(filepath.Dir(path), 0755)
 		_, _ = os.Create(path)
 		return cfg, nil
@@ -98,11 +101,13 @@ func Load(path string) (Config, error) {
 	if err != nil {
 		return cfg, fmt.Errorf("parse config: %w", err)
 	}
+	slog.Debug("config loaded", "path", path, "hosts", len(parsed.Hosts), "current_context", parsed.CurrentContext)
 	parsed.path = path
 	return parsed, nil
 }
 
 func (c Config) Save() error {
+	slog.Debug("saving config", "path", c.path)
 	data, err := c.Marshal()
 	if err != nil {
 		return fmt.Errorf("marshal config: %w", err)

@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 
 	"github.com/daptin/daptin-cli/client"
@@ -26,6 +27,8 @@ func NewApp(cfg *config.Config, version string) *cli.App {
 		Usage:   "CLI client for Daptin API server",
 		Version: version,
 		Before: func(c *cli.Context) error {
+			InitLogger(c.Bool("debug"))
+
 			endpoint := c.String("endpoint")
 			authToken := ""
 			contextName := endpoint
@@ -33,11 +36,13 @@ func NewApp(cfg *config.Config, version string) *cli.App {
 			// Explicit --endpoint flag wins over saved context
 			if c.IsSet("endpoint") {
 				contextName = endpoint
+				slog.Debug("context resolution", "source", "endpoint_flag", "endpoint", endpoint)
 			} else if cfg.CurrentContext != "" {
 				if host, err := cfg.ActiveHost(); err == nil {
 					endpoint = host.Endpoint
 					authToken = host.Token
 					contextName = host.Name
+					slog.Debug("context resolution", "source", "saved_context", "context", contextName, "endpoint", endpoint, "token_present", authToken != "")
 				}
 			}
 
@@ -52,7 +57,8 @@ func NewApp(cfg *config.Config, version string) *cli.App {
 				fmt.Fprintf(os.Stderr, "Using %s (%s%s)\n", contextName, endpoint, authed)
 			}
 
-			switch c.String("output") {
+			outputFmt := c.String("output")
+			switch outputFmt {
 			case "json":
 				appCtx.Renderer = render.NewJsonRenderer()
 			default:
@@ -62,6 +68,7 @@ func NewApp(cfg *config.Config, version string) *cli.App {
 					appCtx.Renderer = render.NewTableRenderer()
 				}
 			}
+			slog.Info("renderer selected", "output", outputFmt)
 
 			return nil
 		},

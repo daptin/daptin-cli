@@ -3,6 +3,7 @@ package cmd
 import (
 	"bufio"
 	"fmt"
+	"log/slog"
 	"os"
 	"strings"
 	"syscall"
@@ -34,14 +35,17 @@ func executeCommand(appCtx *AppContext) *cli.Command {
 			if entityName == "" || actionName == "" {
 				return fmt.Errorf("usage: execute <entity> <action_name> [key=val ...]")
 			}
+			slog.Info("execute", "entity", entityName, "action", actionName)
 
 			attrs, err := parseAttributes(c.Args().Slice()[2:])
+			slog.Debug("execute attributes parsed", "count", len(c.Args().Slice()[2:]))
 			if err != nil {
 				return err
 			}
 
 			// Interactive: fetch schema, compute missing fields, prompt at IO boundary
 			if c.Bool("interactive") {
+				slog.Debug("interactive mode enabled, fetching schema")
 				schema, schemaErr := fetchActionSchemaFromServer(appCtx, entityName, actionName)
 				if schemaErr == nil {
 					prompts := MissingFields(schema, attrs)
@@ -76,6 +80,7 @@ func executeCommand(appCtx *AppContext) *cli.Command {
 // applyEffects performs the IO for each ResponseEffect. This is the edge.
 func applyEffects(effects []ResponseEffect, appCtx *AppContext) error {
 	for _, e := range effects {
+		slog.Debug("applying effect", "type", e.Type)
 		switch e.Type {
 		case "token":
 			host, err := appCtx.Config.ActiveHost()
@@ -106,6 +111,7 @@ func applyEffects(effects []ResponseEffect, appCtx *AppContext) error {
 // fetchActionSchemaFromServer fetches InFields for an action via the API.
 // IO boundary: makes HTTP calls, then delegates to pure functions.
 func fetchActionSchemaFromServer(appCtx *AppContext, entityName, actionName string) ([]map[string]interface{}, error) {
+	slog.Debug("fetching action schema", "entity", entityName, "action", actionName)
 	worlds, err := appCtx.Client.FindAll("world", daptinClient.DaptinQueryParameters{
 		"page[size]": 500,
 	})

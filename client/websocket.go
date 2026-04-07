@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -23,6 +24,7 @@ type WSConn struct {
 // handshake (reads session-open), and returns a ready-to-use connection.
 func DialWebSocket(endpoint, authToken string) (*WSConn, error) {
 	wsURL := httpToWS(endpoint) + "/live"
+	slog.Debug("dialing websocket", "url", wsURL, "auth_header_present", authToken != "")
 
 	header := http.Header{}
 	header.Set("Origin", endpoint)
@@ -51,12 +53,14 @@ func DialWebSocket(endpoint, authToken string) (*WSConn, error) {
 		return nil, fmt.Errorf("expected session-open, got: %v", msg)
 	}
 
+	slog.Debug("websocket session open")
 	return ws, nil
 }
 
 // Send sends a method call with attributes and returns the request ID.
 func (ws *WSConn) Send(method string, attrs map[string]interface{}) (string, error) {
 	id := strconv.FormatInt(ws.nextID.Add(1), 10)
+	slog.Debug("ws send", "method", method, "id", id)
 	msg := map[string]interface{}{
 		"id":         id,
 		"method":     method,
@@ -71,6 +75,7 @@ func (ws *WSConn) Send(method string, attrs map[string]interface{}) (string, err
 
 // SendPing sends a keepalive ping.
 func (ws *WSConn) SendPing() error {
+	slog.Debug("ws sending ping")
 	return ws.conn.WriteJSON(map[string]interface{}{"method": "ping"})
 }
 
@@ -84,6 +89,7 @@ func (ws *WSConn) ReadMessage() (map[string]interface{}, error) {
 	if err := json.Unmarshal(data, &msg); err != nil {
 		return nil, err
 	}
+	slog.Debug("ws read message", "type", msg["type"])
 	return msg, nil
 }
 
@@ -96,6 +102,7 @@ func (ws *WSConn) WaitResponse(id string, eventHandler func(map[string]interface
 			return nil, err
 		}
 		if msg["type"] == "response" && msg["id"] == id {
+			slog.Debug("ws matched response", "id", id)
 			if ok, _ := msg["ok"].(bool); !ok {
 				errMsg, _ := msg["error"].(string)
 				return msg, fmt.Errorf("server error: %s", errMsg)
@@ -119,6 +126,7 @@ func (ws *WSConn) WaitResponseTimeout(id string, timeout time.Duration) (map[str
 		msg, err := ws.ReadMessage()
 		if err != nil {
 			if isTimeout(err) {
+				slog.Warn("ws response timeout", "id", id, "timeout", timeout)
 				return nil, nil
 			}
 			return nil, err
@@ -150,6 +158,7 @@ func (ws *WSConn) ReadMessageTimeout(timeout time.Duration) (map[string]interfac
 	defer ws.conn.SetReadDeadline(time.Time{})
 	msg, err := ws.ReadMessage()
 	if err != nil && isTimeout(err) {
+		slog.Warn("ws read timeout", "timeout", timeout)
 		return nil, nil
 	}
 	return msg, err
@@ -157,6 +166,7 @@ func (ws *WSConn) ReadMessageTimeout(timeout time.Duration) (map[string]interfac
 
 // Close closes the WebSocket connection.
 func (ws *WSConn) Close() error {
+	slog.Debug("ws closing connection")
 	return ws.conn.Close()
 }
 
