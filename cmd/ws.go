@@ -359,9 +359,12 @@ func wsTopicCommand(appCtx *AppContext) *cli.Command {
 					if err != nil {
 						return fmt.Errorf("get permission failed: %w", err)
 					}
-					attrs, _ := resp["attributes"].(map[string]interface{})
-					perm, _ := attrs["permission"]
-					fmt.Println(perm)
+					data := client.DecodeResponseData(resp)
+					if p, ok := data["permission"].(float64); ok {
+						fmt.Println(int64(p))
+					} else {
+						fmt.Println(data["permission"])
+					}
 					return nil
 				},
 			},

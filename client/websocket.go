@@ -1,16 +1,16 @@
 package client
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
 
-	"golang.org/x/net/websocket"
+	"github.com/gorilla/websocket"
 )
 
 // WSConn wraps a WebSocket connection to a Daptin /live endpoint.
@@ -23,23 +23,18 @@ type WSConn struct {
 // handshake (reads session-open), and returns a ready-to-use connection.
 func DialWebSocket(endpoint, authToken string) (*WSConn, error) {
 	wsURL := httpToWS(endpoint) + "/live"
-	origin := endpoint
 
-	config, err := websocket.NewConfig(wsURL, origin)
-	if err != nil {
-		return nil, fmt.Errorf("websocket config: %w", err)
-	}
+	header := http.Header{}
+	header.Set("Origin", endpoint)
 	if authToken != "" {
-		config.Header.Set("Authorization", "Bearer "+authToken)
+		header.Set("Authorization", "Bearer "+authToken)
 	}
 
-	conn, err := websocket.DialConfig(config)
+	dialer := websocket.Dialer{
+		HandshakeTimeout: 10 * time.Second,
+	}
+	conn, _, err := dialer.Dial(wsURL, header)
 	if err != nil {
-		// The websocket library gives opaque "bad status" errors.
-		// Do a preflight to surface the real HTTP status and body.
-		if body, code, fetchErr := preflight(endpoint+"/live", authToken); fetchErr == nil && code != http.StatusSwitchingProtocols {
-			return nil, fmt.Errorf("websocket upgrade rejected (HTTP %d): %s", code, body)
-		}
 		return nil, fmt.Errorf("websocket dial: %w", err)
 	}
 
@@ -67,7 +62,7 @@ func (ws *WSConn) Send(method string, attrs map[string]interface{}) (string, err
 		"method":     method,
 		"attributes": attrs,
 	}
-	err := websocket.JSON.Send(ws.conn, msg)
+	err := ws.conn.WriteJSON(msg)
 	if err != nil {
 		return "", fmt.Errorf("websocket send: %w", err)
 	}
@@ -76,14 +71,17 @@ func (ws *WSConn) Send(method string, attrs map[string]interface{}) (string, err
 
 // SendPing sends a keepalive ping.
 func (ws *WSConn) SendPing() error {
-	return websocket.JSON.Send(ws.conn, map[string]interface{}{"method": "ping"})
+	return ws.conn.WriteJSON(map[string]interface{}{"method": "ping"})
 }
 
 // ReadMessage reads one JSON message from the connection.
 func (ws *WSConn) ReadMessage() (map[string]interface{}, error) {
-	var msg map[string]interface{}
-	err := websocket.JSON.Receive(ws.conn, &msg)
+	_, data, err := ws.conn.ReadMessage()
 	if err != nil {
+		return nil, err
+	}
+	var msg map[string]interface{}
+	if err := json.Unmarshal(data, &msg); err != nil {
 		return nil, err
 	}
 	return msg, nil
@@ -120,7 +118,6 @@ func (ws *WSConn) WaitResponseTimeout(id string, timeout time.Duration) (map[str
 	for {
 		msg, err := ws.ReadMessage()
 		if err != nil {
-			// Timeout means no error response — success
 			if isTimeout(err) {
 				return nil, nil
 			}
@@ -163,6 +160,29 @@ func (ws *WSConn) Close() error {
 	return ws.conn.Close()
 }
 
+// DecodeResponseData extracts the "data" field from a WS response.
+// The server sends Data as jsoniter.RawMessage ([]byte), which the
+// standard JSON encoder serializes as base64. This function handles
+// both base64-encoded strings and already-parsed map values.
+func DecodeResponseData(resp map[string]interface{}) map[string]interface{} {
+	switch d := resp["data"].(type) {
+	case map[string]interface{}:
+		return d
+	case string:
+		var m map[string]interface{}
+		if json.Unmarshal([]byte(d), &m) == nil {
+			return m
+		}
+		decoded, err := base64.StdEncoding.DecodeString(d)
+		if err == nil {
+			if json.Unmarshal(decoded, &m) == nil {
+				return m
+			}
+		}
+	}
+	return nil
+}
+
 // EventToJSONLine serializes a message to a compact JSON line.
 func EventToJSONLine(msg map[string]interface{}) (string, error) {
 	data, err := json.Marshal(msg)
@@ -170,25 +190,6 @@ func EventToJSONLine(msg map[string]interface{}) (string, error) {
 		return "", err
 	}
 	return string(data), nil
-}
-
-// preflight makes a regular HTTP GET to the endpoint to retrieve
-// the actual status code and body when WebSocket upgrade fails.
-func preflight(url, authToken string) (string, int, error) {
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		return "", 0, err
-	}
-	if authToken != "" {
-		req.Header.Set("Authorization", "Bearer "+authToken)
-	}
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return "", 0, err
-	}
-	defer resp.Body.Close()
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-	return strings.TrimSpace(string(body)), resp.StatusCode, nil
 }
 
 func httpToWS(endpoint string) string {

@@ -7,7 +7,8 @@ import "strings"
 var knownCommands = map[string]bool{
 	"context": true, "list": true, "get": true, "create": true,
 	"update": true, "delete": true, "related": true, "describe": true,
-	"execute": true, "help": true,
+	"execute": true, "help": true, "relate": true, "unrelate": true,
+	"permission": true,
 }
 
 // Only commands that actually have subcommands, mapped to their subcommand names.

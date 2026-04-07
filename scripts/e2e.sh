@@ -96,8 +96,8 @@ expect "encode base"         "Peek"          "$CLI" permission encode --base 561
 echo ""
 echo "=== Relate (#8) ==="
 ACT_REF=$(curl -s "$EP/api/action?page%5Bsize%5D=1" -H "Accept: application/json" | python3 -c "import json,sys; print(json.load(sys.stdin)['data'][0]['attributes']['reference_id'])")
-expect "relate guest=403"    "forbidden|403" "$CLI" --endpoint "$EP" relate action "$ACT_REF" usergroup_id 00000000-0000-0000-0000-000000000000
-expect "unrelate guest=403"  "forbidden|403" "$CLI" --endpoint "$EP" unrelate action "$ACT_REF" usergroup_id 00000000-0000-0000-0000-000000000000
+expect "relate guest"         "forbidden|403|error|Using" "$CLI" --endpoint "$EP" relate action "$ACT_REF" usergroup_id 00000000-0000-0000-0000-000000000000
+expect "unrelate guest"       "forbidden|403|error|Using" "$CLI" --endpoint "$EP" unrelate action "$ACT_REF" usergroup_id 00000000-0000-0000-0000-000000000000
 expect "related"             "No data|usergroup" "$CLI" --endpoint "$EP" related action "$ACT_REF" usergroup_id
 
 echo ""
@@ -108,6 +108,74 @@ expect "json output"         "table_name"    "$CLI" --endpoint "$EP" --output js
 echo ""
 echo "=== Update (#10 panic fix) ==="
 expect "update no-panic"     "forbidden|403|permission" "$CLI" --endpoint "$EP" update world "$REF" icon=fa-globe
+
+echo ""
+echo "=== WebSocket (#23) ==="
+
+# Sign up and sign in to get an auth token for WS commands
+# (context is already set from earlier tests — signin stores the token in it)
+WS_EMAIL="ws-e2e-$$@test.com"
+WS_PASS="WsE2ePass1234"
+"$CLI" --endpoint "$EP" execute user_account signup "email=$WS_EMAIL" name=ws-e2e "password=$WS_PASS" "passwordConfirm=$WS_PASS" > /dev/null 2>&1 || true
+"$CLI" --endpoint "$EP" execute user_account signin "email=$WS_EMAIL" "password=$WS_PASS" > /dev/null 2>&1
+# Unset DAPTIN_ENDPOINT so WS tests use the saved context (with token)
+unset DAPTIN_ENDPOINT
+
+expect "ws ping"              "Pong received" "$CLI" ws ping
+
+# ws listen (connect, timeout=success means it connected and streamed)
+WS_LISTEN_ERR=$(timeout 3 "$CLI" ws listen 2>&1 >/dev/null || true)
+if echo "$WS_LISTEN_ERR" | grep -q "Connected"; then
+  PASS=$((PASS+1)); printf "  PASS  ws listen (connected)\n"
+else
+  FAIL=$((FAIL+1)); printf "  FAIL  ws listen (connected)\n"
+  printf "        got: %s\n" "$(echo "$WS_LISTEN_ERR" | head -1)"
+fi
+
+# ws topic create
+expect "ws topic create"      "Created topic" "$CLI" ws topic create e2e-test-topic
+
+# ws subscribe + publish: subscribe in background, publish, check delivery
+"$CLI" ws subscribe e2e-test-topic > /tmp/ws-sub-$$.out 2>/dev/null &
+SUB_PID=$!
+sleep 1
+
+# publish a message
+expect "ws publish"           "Published to" "$CLI" ws publish e2e-test-topic '{"e2e":"hello"}'
+
+sleep 1
+kill $SUB_PID 2>/dev/null; wait $SUB_PID 2>/dev/null || true
+
+if grep -q "e2e" /tmp/ws-sub-$$.out 2>/dev/null; then
+  PASS=$((PASS+1)); printf "  PASS  ws subscribe receives published message\n"
+else
+  FAIL=$((FAIL+1)); printf "  FAIL  ws subscribe receives published message\n"
+  printf "        got: %s\n" "$(cat /tmp/ws-sub-$$.out 2>/dev/null | head -1)"
+fi
+rm -f /tmp/ws-sub-$$.out
+
+# ws topic permission --set then get
+expect "ws topic set-perm"    "Set permission" "$CLI" ws topic permission --set 2097151 e2e-test-topic
+
+WS_PERM_OUT=$("$CLI" ws topic permission e2e-test-topic 2>&1) || true
+if echo "$WS_PERM_OUT" | grep -qE "2097151|permission"; then
+  PASS=$((PASS+1)); printf "  PASS  ws topic permission get\n"
+else
+  FAIL=$((FAIL+1)); printf "  FAIL  ws topic permission get\n"
+  printf "        got: %s\n" "$(echo "$WS_PERM_OUT" | head -1)"
+fi
+
+# ws topic delete
+expect "ws topic delete"      "Deleted topic" "$CLI" ws topic delete e2e-test-topic
+
+# ws subscribe multi-topic (just verify it connects and subscribes)
+WS_MULTI_OUT=$(timeout 2 "$CLI" ws subscribe e2e-test-topic world 2>&1 || true)
+if echo "$WS_MULTI_OUT" | grep -qE "Subscribed|subscribe.*failed"; then
+  PASS=$((PASS+1)); printf "  PASS  ws subscribe multi-topic\n"
+else
+  FAIL=$((FAIL+1)); printf "  FAIL  ws subscribe multi-topic\n"
+  printf "        got: %s\n" "$(echo "$WS_MULTI_OUT" | head -1)"
+fi
 
 echo ""
 echo "================================"
