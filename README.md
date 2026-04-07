@@ -253,6 +253,34 @@ Use `%` wildcards with `like` for partial matching. Raw JSON is also accepted:
 --debug              Enable debug output
 ```
 
+## WebSocket
+
+Real-time pub/sub via Daptin's `/live` endpoint.
+
+```bash
+# Stream all events
+daptin-cli ws listen
+
+# Subscribe to topics
+daptin-cli ws subscribe user_account
+daptin-cli ws subscribe user_account document order
+
+# Publish a message
+daptin-cli ws publish chat-room-1 '{"text":"hello"}'
+
+# Ping
+daptin-cli ws ping
+
+# Topic management
+daptin-cli ws topic create chat-room-1
+daptin-cli ws topic delete chat-room-1
+daptin-cli ws topic permission chat-room-1
+daptin-cli ws topic permission chat-room-1 --set 2097151
+
+# Cross-node verification
+daptin-cli ws verify --endpoints http://node1:6336,http://node2:6336
+```
+
 ## Environment Variables
 
 ```

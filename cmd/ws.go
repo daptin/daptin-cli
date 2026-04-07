@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
-	"strconv"
 	"strings"
 	"time"
 
@@ -19,7 +18,9 @@ func wsCommand(appCtx *AppContext) *cli.Command {
 		Usage: "WebSocket pub/sub commands",
 		Subcommands: []*cli.Command{
 			wsListenCommand(appCtx),
+			wsSubscribeCommand(appCtx),
 			wsPublishCommand(appCtx),
+			wsPingCommand(appCtx),
 			wsTopicCommand(appCtx),
 			wsVerifyCommand(appCtx),
 		},
@@ -28,9 +29,51 @@ func wsCommand(appCtx *AppContext) *cli.Command {
 
 func wsListenCommand(appCtx *AppContext) *cli.Command {
 	return &cli.Command{
-		Name:      "listen",
-		Usage:     "Subscribe to a topic and stream events",
-		ArgsUsage: "<topic>",
+		Name:  "listen",
+		Usage: "Open a WebSocket connection and print all received events",
+		Action: func(c *cli.Context) error {
+			ws, err := client.DialWebSocket(appCtx.Client.Endpoint, appCtx.Client.AuthToken)
+			if err != nil {
+				return err
+			}
+			defer ws.Close()
+
+			if !appCtx.Quiet {
+				fmt.Fprintf(os.Stderr, "Connected (session open)\n")
+			}
+
+			sigCh := make(chan os.Signal, 1)
+			signal.Notify(sigCh, os.Interrupt)
+
+			go func() {
+				<-sigCh
+				ws.Close()
+				os.Exit(0)
+			}()
+
+			for {
+				msg, err := ws.ReadMessage()
+				if err != nil {
+					return nil
+				}
+				if msg["type"] == "pong" {
+					continue
+				}
+				line, err := client.EventToJSONLine(msg)
+				if err != nil {
+					continue
+				}
+				fmt.Println(line)
+			}
+		},
+	}
+}
+
+func wsSubscribeCommand(appCtx *AppContext) *cli.Command {
+	return &cli.Command{
+		Name:      "subscribe",
+		Usage:     "Subscribe to one or more topics and stream events",
+		ArgsUsage: "<topic> [topic2 ...]",
 		Flags: []cli.Flag{
 			&cli.StringSliceFlag{
 				Name:  "filter",
@@ -38,10 +81,10 @@ func wsListenCommand(appCtx *AppContext) *cli.Command {
 			},
 		},
 		Action: func(c *cli.Context) error {
-			topic := c.Args().Get(0)
-			if topic == "" {
-				return fmt.Errorf("topic name required")
+			if c.NArg() == 0 {
+				return fmt.Errorf("at least one topic name required")
 			}
+			topics := c.Args().Slice()
 
 			ws, err := client.DialWebSocket(appCtx.Client.Endpoint, appCtx.Client.AuthToken)
 			if err != nil {
@@ -53,12 +96,9 @@ func wsListenCommand(appCtx *AppContext) *cli.Command {
 				fmt.Fprintf(os.Stderr, "Connected (session open)\n")
 			}
 
-			// Build subscribe attributes
-			attrs := map[string]interface{}{
-				"topicName": topic,
-			}
+			var filterMap map[string]interface{}
 			if filters := c.StringSlice("filter"); len(filters) > 0 {
-				filterMap := make(map[string]interface{}, len(filters))
+				filterMap = make(map[string]interface{}, len(filters))
 				for _, f := range filters {
 					parts := strings.SplitN(f, "=", 2)
 					if len(parts) != 2 {
@@ -66,39 +106,44 @@ func wsListenCommand(appCtx *AppContext) *cli.Command {
 					}
 					filterMap[parts[0]] = parts[1]
 				}
-				attrs["filters"] = filterMap
 			}
 
-			id, err := ws.Send("subscribe", attrs)
-			if err != nil {
-				return err
+			for _, topic := range topics {
+				attrs := map[string]interface{}{
+					"topicName": topic,
+				}
+				if filterMap != nil {
+					attrs["filters"] = filterMap
+				}
+				id, err := ws.Send("subscribe", attrs)
+				if err != nil {
+					return err
+				}
+				_, err = ws.WaitResponse(id, nil)
+				if err != nil {
+					return fmt.Errorf("subscribe to %s failed: %w", topic, err)
+				}
+				if !appCtx.Quiet {
+					fmt.Fprintf(os.Stderr, "Subscribed to %s\n", topic)
+				}
 			}
 
-			_, err = ws.WaitResponse(id, nil)
-			if err != nil {
-				return fmt.Errorf("subscribe failed: %w", err)
-			}
-
-			if !appCtx.Quiet {
-				fmt.Fprintf(os.Stderr, "Subscribed to %s\n", topic)
-			}
-
-			// Handle SIGINT for clean shutdown
 			sigCh := make(chan os.Signal, 1)
 			signal.Notify(sigCh, os.Interrupt)
 
 			go func() {
 				<-sigCh
-				ws.Send("unsubscribe", map[string]interface{}{"topicName": topic})
+				for _, topic := range topics {
+					ws.Send("unsubscribe", map[string]interface{}{"topicName": topic})
+				}
 				ws.Close()
 				os.Exit(0)
 			}()
 
-			// Stream events
 			for {
 				msg, err := ws.ReadMessage()
 				if err != nil {
-					return nil // connection closed
+					return nil
 				}
 				if msg["type"] == "pong" {
 					continue
@@ -109,6 +154,37 @@ func wsListenCommand(appCtx *AppContext) *cli.Command {
 				}
 				fmt.Println(line)
 			}
+		},
+	}
+}
+
+func wsPingCommand(appCtx *AppContext) *cli.Command {
+	return &cli.Command{
+		Name:  "ping",
+		Usage: "Check WebSocket liveness",
+		Action: func(c *cli.Context) error {
+			ws, err := client.DialWebSocket(appCtx.Client.Endpoint, appCtx.Client.AuthToken)
+			if err != nil {
+				return err
+			}
+			defer ws.Close()
+
+			start := time.Now()
+			if err := ws.SendPing(); err != nil {
+				return err
+			}
+
+			msg, err := ws.ReadMessageTimeout(5 * time.Second)
+			if err != nil {
+				return fmt.Errorf("ping failed: %w", err)
+			}
+			if msg == nil {
+				return fmt.Errorf("ping timeout (5s)")
+			}
+
+			d := time.Since(start)
+			fmt.Fprintf(os.Stderr, "Pong received (%dms)\n", d.Milliseconds())
+			return nil
 		},
 	}
 }
@@ -198,8 +274,8 @@ func wsTopicCommand(appCtx *AppContext) *cli.Command {
 				},
 			},
 			{
-				Name:      "destroy",
-				Usage:     "Destroy a user topic",
+				Name:      "delete",
+				Usage:     "Delete a user topic",
 				ArgsUsage: "<name>",
 				Action: func(c *cli.Context) error {
 					name := c.Args().Get(0)
@@ -222,29 +298,29 @@ func wsTopicCommand(appCtx *AppContext) *cli.Command {
 
 					_, err = ws.WaitResponse(id, nil)
 					if err != nil {
-						return fmt.Errorf("destroy topic failed: %w", err)
+						return fmt.Errorf("delete topic failed: %w", err)
 					}
 
 					if !appCtx.Quiet {
-						fmt.Fprintf(os.Stderr, "Destroyed topic %s\n", name)
+						fmt.Fprintf(os.Stderr, "Deleted topic %s\n", name)
 					}
 					return nil
 				},
 			},
 			{
-				Name:      "set-permission",
-				Usage:     "Set permission on a user topic",
-				ArgsUsage: "<name> <permission>",
+				Name:      "permission",
+				Usage:     "Get or set permission on a user topic",
+				ArgsUsage: "<name>",
+				Flags: []cli.Flag{
+					&cli.Int64Flag{
+						Name:  "set",
+						Usage: "Permission bitmask to set",
+					},
+				},
 				Action: func(c *cli.Context) error {
 					name := c.Args().Get(0)
-					permStr := c.Args().Get(1)
-					if name == "" || permStr == "" {
-						return fmt.Errorf("usage: ws topic set-permission <name> <permission>")
-					}
-
-					perm, err := strconv.ParseInt(permStr, 10, 64)
-					if err != nil {
-						return fmt.Errorf("invalid permission value: %w", err)
+					if name == "" {
+						return fmt.Errorf("topic name required")
 					}
 
 					ws, err := client.DialWebSocket(appCtx.Client.Endpoint, appCtx.Client.AuthToken)
@@ -253,22 +329,39 @@ func wsTopicCommand(appCtx *AppContext) *cli.Command {
 					}
 					defer ws.Close()
 
-					id, err := ws.Send("set-topic-permission", map[string]interface{}{
-						"topicName":  name,
-						"permission": perm,
+					if c.IsSet("set") {
+						perm := c.Int64("set")
+						id, err := ws.Send("set-topic-permission", map[string]interface{}{
+							"topicName":  name,
+							"permission": perm,
+						})
+						if err != nil {
+							return err
+						}
+						_, err = ws.WaitResponse(id, nil)
+						if err != nil {
+							return fmt.Errorf("set permission failed: %w", err)
+						}
+						if !appCtx.Quiet {
+							fmt.Fprintf(os.Stderr, "Set permission %d on topic %s\n", perm, name)
+						}
+						return nil
+					}
+
+					// Get permission
+					id, err := ws.Send("get-topic-permission", map[string]interface{}{
+						"topicName": name,
 					})
 					if err != nil {
 						return err
 					}
-
-					_, err = ws.WaitResponse(id, nil)
+					resp, err := ws.WaitResponse(id, nil)
 					if err != nil {
-						return fmt.Errorf("set-permission failed: %w", err)
+						return fmt.Errorf("get permission failed: %w", err)
 					}
-
-					if !appCtx.Quiet {
-						fmt.Fprintf(os.Stderr, "Set permission %d on topic %s\n", perm, name)
-					}
+					attrs, _ := resp["attributes"].(map[string]interface{})
+					perm, _ := attrs["permission"]
+					fmt.Println(perm)
 					return nil
 				},
 			},
