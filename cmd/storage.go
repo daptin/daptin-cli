@@ -20,6 +20,14 @@ func storageCommand(appCtx *AppContext) *cli.Command {
 	return &cli.Command{
 		Name:  "storage",
 		Usage: "Manage Daptin cloud stores and storage actions",
+		UsageText: `daptin storage <command> [options]
+   daptin storage list
+   daptin storage add minio --type s3 --provider Minio --endpoint http://localhost:9000 --access-key minioadmin --secret-key minioadmin123 --bucket daptin-test
+   daptin storage add local-files --type local --store-provider local --root-path /tmp/daptin-files
+   daptin storage upload local-files:/photos ./image.jpg
+   daptin storage mkdir local-files:/photos
+   daptin storage rm local-files:/photos/old.jpg`,
+		Description: "These commands wrap Daptin's cloud_store records and supported cloud_store actions. Direct cloud_store ls/download are not exposed by Daptin; use site file actions or asset routes for those flows.",
 		Subcommands: []*cli.Command{
 			storageAddCommand(appCtx),
 			storageListCommand(appCtx),
@@ -39,6 +47,10 @@ func storageAddCommand(appCtx *AppContext) *cli.Command {
 		Name:      "add",
 		Usage:     "Create a cloud_store and optional rclone credential",
 		ArgsUsage: "<name>",
+		UsageText: `daptin storage add <name> [flags]
+   daptin storage add minio --type s3 --provider Minio --endpoint http://localhost:9000 --access-key minioadmin --secret-key minioadmin123 --bucket daptin-test
+   daptin storage add local-files --type local --store-provider local --root-path /tmp/daptin-files
+   daptin storage add s3-prod --type s3 --provider AWS --bucket prod-bucket --param region=us-east-1 --restart`,
 		Flags: []cli.Flag{
 			&cli.StringFlag{Name: "type", Value: "s3", Usage: "Rclone storage type"},
 			&cli.StringFlag{Name: "provider", Usage: "Rclone credential provider name"},
@@ -132,8 +144,9 @@ func storageAddCommand(appCtx *AppContext) *cli.Command {
 
 func storageListCommand(appCtx *AppContext) *cli.Command {
 	return &cli.Command{
-		Name:  "list",
-		Usage: "List configured cloud stores",
+		Name:      "list",
+		Usage:     "List configured cloud stores",
+		UsageText: `daptin storage list`,
 		Action: func(c *cli.Context) error {
 			result, err := appCtx.Client.FindAll("cloud_store", daptinClient.DaptinQueryParameters{"page[size]": 500})
 			if err != nil {
@@ -150,6 +163,8 @@ func storageRemoveCommand(appCtx *AppContext) *cli.Command {
 		Name:      "remove",
 		Usage:     "Delete a cloud_store by name or reference_id",
 		ArgsUsage: "<name-or-reference-id>",
+		UsageText: `daptin storage remove <name-or-reference-id>
+   daptin storage remove local-files`,
 		Action: func(c *cli.Context) error {
 			ref, err := cloudStoreRef(appCtx, c.Args().Get(0))
 			if err != nil {
@@ -169,6 +184,10 @@ func storageUploadCommand(appCtx *AppContext) *cli.Command {
 		Name:      "upload",
 		Usage:     "Upload a file or recursive directory to cloud_store via upload_file",
 		ArgsUsage: "<store:/path> <local-path>",
+		UsageText: `daptin storage upload <store:/path> <local-path>
+   daptin storage upload local-files:/photos ./image.jpg
+   daptin storage upload local-files:/docs/ ./manual.pdf
+   daptin storage upload local-files:/site/ ./public --recursive`,
 		Flags: []cli.Flag{
 			&cli.BoolFlag{Name: "recursive", Usage: "Upload a directory recursively"},
 		},
@@ -198,6 +217,8 @@ func storageMkdirCommand(appCtx *AppContext) *cli.Command {
 		Name:      "mkdir",
 		Usage:     "Create a folder in cloud_store",
 		ArgsUsage: "<store:/path>",
+		UsageText: `daptin storage mkdir <store:/path>
+   daptin storage mkdir local-files:/photos`,
 		Action: func(c *cli.Context) error {
 			storeName, targetPath, err := parseStorageAddress(c.Args().Get(0))
 			if err != nil {
@@ -217,6 +238,8 @@ func storageRemovePathCommand(appCtx *AppContext) *cli.Command {
 		Name:      "rm",
 		Usage:     "Delete a path from cloud_store",
 		ArgsUsage: "<store:/path>",
+		UsageText: `daptin storage rm <store:/path>
+   daptin storage rm local-files:/photos/old.jpg`,
 		Action: func(c *cli.Context) error {
 			storeName, targetPath, err := parseStorageAddress(c.Args().Get(0))
 			if err != nil {
@@ -232,6 +255,8 @@ func storageMoveCommand(appCtx *AppContext) *cli.Command {
 		Name:      "mv",
 		Usage:     "Move or rename a path in the same cloud_store",
 		ArgsUsage: "<store:/source> <store:/destination>",
+		UsageText: `daptin storage mv <store:/source> <store:/destination>
+   daptin storage mv local-files:/old.jpg local-files:/archive/old.jpg`,
 		Action: func(c *cli.Context) error {
 			srcStore, source, err := parseStorageAddress(c.Args().Get(0))
 			if err != nil {
@@ -263,6 +288,10 @@ func assetCommand(appCtx *AppContext) *cli.Command {
 	return &cli.Command{
 		Name:  "asset",
 		Usage: "Manage file asset columns",
+		UsageText: `daptin asset <command> [options]
+   daptin asset upload product <product_reference_id> photo ./image.jpg
+   daptin asset list product <product_reference_id> photo`,
+		Description: "Asset commands use Daptin's /asset routes for file.* columns on normal entity rows.",
 		Subcommands: []*cli.Command{
 			assetUploadCommand(appCtx),
 			assetListCommand(appCtx),
@@ -275,6 +304,8 @@ func assetUploadCommand(appCtx *AppContext) *cli.Command {
 		Name:      "upload",
 		Usage:     "Stream a file into a file.* asset column",
 		ArgsUsage: "<entity> <reference_id> <column> <local-file>",
+		UsageText: `daptin asset upload <entity> <reference_id> <column> <local-file>
+   daptin asset upload product <product_reference_id> photo ./image.jpg`,
 		Action: func(c *cli.Context) error {
 			entityName, referenceID, columnName, localPath := c.Args().Get(0), c.Args().Get(1), c.Args().Get(2), c.Args().Get(3)
 			if entityName == "" || referenceID == "" || columnName == "" || localPath == "" {
@@ -314,6 +345,8 @@ func assetListCommand(appCtx *AppContext) *cli.Command {
 		Name:      "list",
 		Usage:     "List files recorded in a file.* asset column",
 		ArgsUsage: "<entity> <reference_id> <column>",
+		UsageText: `daptin asset list <entity> <reference_id> <column>
+   daptin asset list product <product_reference_id> photo`,
 		Action: func(c *cli.Context) error {
 			entityName, referenceID, columnName := c.Args().Get(0), c.Args().Get(1), c.Args().Get(2)
 			if entityName == "" || referenceID == "" || columnName == "" {

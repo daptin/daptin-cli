@@ -2,7 +2,27 @@
 
 CLI client for [Daptin](https://github.com/daptin/daptin) — the headless CMS and API server.
 
-All Daptin entities are accessed uniformly via CRUD commands. All Daptin actions (signin, signup, upload, export, etc.) are executed uniformly via `execute`. No special-case commands.
+All Daptin entities are accessed uniformly via CRUD commands, and all Daptin actions can be executed uniformly via `execute`. Common workflows such as cloud storage and file asset uploads also have ergonomic wrapper commands.
+
+## Discovery
+
+The CLI is self-describing. Start with:
+
+```bash
+daptin-cli --help
+daptin-cli list --help
+daptin-cli execute --help
+daptin-cli describe action --help
+daptin-cli storage --help
+daptin-cli asset --help
+```
+
+For any Daptin action, use `describe action` before `execute` to see whether the action needs an instance reference id and which input fields it accepts:
+
+```bash
+daptin-cli describe action integration install_integration
+daptin-cli execute integration install_integration --reference-id <integration_reference_id>
+```
 
 ## Install
 
@@ -50,7 +70,7 @@ Grab a binary from the [releases page](https://github.com/daptin/daptin-cli/rele
 daptin-cli context add myserver http://localhost:6336
 daptin-cli context set myserver
 
-# Sign in (signin is just an action like any other)
+# Sign in (signin is an action like any other)
 daptin-cli execute user_account signin email=admin@example.com password=secret
 
 # List tables
@@ -58,6 +78,9 @@ daptin-cli list --columns table_name,is_top_level world
 
 # List rows
 daptin-cli list --columns name,email --page-size 20 user_account
+
+# Discover action requirements
+daptin-cli describe action integration install_integration
 ```
 
 ## Context Management
@@ -95,6 +118,7 @@ daptin-cli list --columns table_name,reference_id --page-size 50 world
 daptin-cli list --sort -created_at --page-size 10 document
 
 # Filter
+daptin-cli list --filter name=administrators usergroup
 daptin-cli list --filter "status is active" task
 daptin-cli list --filter "table_name like %doc%" world
 daptin-cli list --filter "name is admin;email contains example" user_account
@@ -139,7 +163,7 @@ daptin-cli related document <ref_id> user_account_id
 
 ## Actions
 
-All Daptin actions — built-in or custom — are executed with `execute`. There are no special commands for signin, signup, upload, etc.
+All Daptin actions — built-in or custom — can be executed with `execute`.
 
 ```bash
 daptin-cli execute <entity> <action_name> [key=val ...]
@@ -196,6 +220,12 @@ For actions that require an entity instance, pass `--reference-id`:
 daptin-cli execute cloud_store upload_file --reference-id <cloud_store_id> path=/docs
 ```
 
+Use `describe action` when you are unsure:
+
+```bash
+daptin-cli describe action cloud_store upload_file
+```
+
 ## Describe
 
 ### Table schema
@@ -212,7 +242,54 @@ Shows columns (name + type) and available actions.
 daptin-cli describe action document createDocument
 ```
 
-Shows the action's InFields (the parameters it accepts).
+Shows whether the action is instance-bound, whether `--reference-id` is required, the action's InFields, and an example `execute` command.
+
+## Storage
+
+Cloud storage setup and common file operations are available through `storage`.
+
+```bash
+# Create a local store
+daptin-cli storage add local-files \
+  --type local \
+  --store-provider local \
+  --root-path /tmp/daptin-files
+
+# Create an S3/MinIO-style store and linked credential
+daptin-cli storage add minio \
+  --type s3 \
+  --provider Minio \
+  --endpoint http://localhost:9000 \
+  --access-key minioadmin \
+  --secret-key minioadmin123 \
+  --bucket daptin-test \
+  --restart
+
+# List and remove stores
+daptin-cli storage list
+daptin-cli storage remove minio
+```
+
+File operations use `store-name:/path` addressing:
+
+```bash
+daptin-cli storage mkdir local-files:/photos
+daptin-cli storage upload local-files:/photos ./image.jpg
+daptin-cli storage upload local-files:/site ./public --recursive
+daptin-cli storage mv local-files:/photos/image.jpg local-files:/archive/image.jpg
+daptin-cli storage rm local-files:/archive/image.jpg
+```
+
+Direct `storage ls` and `storage download` for `cloud_store` paths are intentionally not implemented as direct cloud-store commands because Daptin exposes those flows through site file actions and asset routes, not direct `cloud_store` actions.
+
+## Asset Columns
+
+Use `asset` for `file.*` columns on normal entity rows. These commands use Daptin's `/asset/...` routes.
+
+```bash
+daptin-cli asset upload product <product_reference_id> photo ./image.jpg
+daptin-cli asset list product <product_reference_id> photo
+```
 
 ## Output
 
@@ -225,9 +302,10 @@ daptin-cli --output json list world
 
 ## Filter Syntax
 
-Filters are semicolon-separated `<column> <operator> <value>` expressions:
+Filters can use `key=value` shorthand or semicolon-separated `<column> <operator> <value>` expressions:
 
 ```bash
+--filter "name=alice"
 --filter "name is alice"
 --filter "status is active;role is admin"
 --filter "name like %ali%"

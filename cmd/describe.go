@@ -38,8 +38,11 @@ func describeCommand(appCtx *AppContext) *cli.Command {
 			},
 			{
 				Name:      "action",
-				Usage:     "Show action schema (InFields, OutFields)",
+				Usage:     "Show action schema, fields, and reference-id requirement",
 				ArgsUsage: "<entity> <action_name>",
+				UsageText: `daptin describe action <entity> <action_name>
+   daptin describe action integration install_integration
+   daptin describe action user_account signin`,
 				Action: func(c *cli.Context) error {
 					entityName := c.Args().Get(0)
 					actionName := c.Args().Get(1)

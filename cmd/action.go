@@ -18,8 +18,13 @@ import (
 func executeCommand(appCtx *AppContext) *cli.Command {
 	return &cli.Command{
 		Name:      "execute",
-		Usage:     "Execute an action on an entity",
+		Usage:     "Execute a Daptin action on an entity",
 		ArgsUsage: "<entity> <action_name> [key=val ...]",
+		UsageText: `daptin execute <entity> <action_name> [key=val ...]
+   daptin execute user_account signin email=admin@example.com password=secret
+   daptin execute integration install_integration --reference-id <integration_reference_id>
+   daptin execute user_account signin --interactive`,
+		Description: "Use describe action first when you need to know whether an action requires --reference-id or which fields it accepts.",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:  "reference-id",

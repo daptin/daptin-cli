@@ -17,6 +17,10 @@ func listCommand(appCtx *AppContext) *cli.Command {
 		Name:      "list",
 		Usage:     "List rows of an entity",
 		ArgsUsage: "<entity>",
+		UsageText: `daptin list <entity> [flags]
+   daptin list usergroup --filter name=administrators --columns name,reference_id
+   daptin list world --filter "table_name like %doc%" --page-size 50
+   daptin list document --sort -created_at`,
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:  "columns",
@@ -38,7 +42,7 @@ func listCommand(appCtx *AppContext) *cli.Command {
 			},
 			&cli.StringFlag{
 				Name:  "filter",
-				Usage: "Filter expression",
+				Usage: "Filter expression, e.g. name=value or \"name is value\"",
 			},
 			&cli.StringFlag{
 				Name:  "include",
