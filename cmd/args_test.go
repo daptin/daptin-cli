@@ -125,6 +125,26 @@ func TestReorderArgs_StorageAddFlagsAfterName(t *testing.T) {
 	}
 }
 
+func TestReorderArgs_OAuthNestedSubcommand(t *testing.T) {
+	input := []string{"daptin", "oauth", "connect", "create", "asana.com", "--client-id", "abc", "--client-secret-env", "ASANA_SECRET"}
+	expected := []string{"daptin", "oauth", "connect", "create", "--client-id", "abc", "--client-secret-env", "ASANA_SECRET", "asana.com"}
+
+	result := ReorderArgs(input)
+	if !reflect.DeepEqual(result, expected) {
+		t.Errorf("expected %v, got %v", expected, result)
+	}
+}
+
+func TestReorderArgs_IntegrationExecute(t *testing.T) {
+	input := []string{"daptin", "integration", "execute", "asana.com", "getWorkspaces", "--oauth-token-id", "tok", "workspace=abc"}
+	expected := []string{"daptin", "integration", "execute", "--oauth-token-id", "tok", "asana.com", "getWorkspaces", "workspace=abc"}
+
+	result := ReorderArgs(input)
+	if !reflect.DeepEqual(result, expected) {
+		t.Errorf("expected %v, got %v", expected, result)
+	}
+}
+
 func TestReorderArgs_EqualsFlag(t *testing.T) {
 	input := []string{"daptin", "list", "usergroup", "--page-size=50"}
 	expected := []string{"daptin", "list", "--page-size=50", "usergroup"}

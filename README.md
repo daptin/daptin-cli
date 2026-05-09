@@ -13,6 +13,8 @@ daptin-cli --help
 daptin-cli list --help
 daptin-cli execute --help
 daptin-cli describe action --help
+daptin-cli oauth --help
+daptin-cli integration --help
 daptin-cli storage --help
 daptin-cli asset --help
 ```
@@ -243,6 +245,61 @@ daptin-cli describe action document createDocument
 ```
 
 Shows whether the action is instance-bound, whether `--reference-id` is required, the action's InFields, and an example `execute` command.
+
+## OAuth And Integrations
+
+OAuth provider setup and OpenAPI integration workflows have first-class wrappers. The generic `create`, `list`, `describe action`, and `execute` commands still work, but these commands keep the common lifecycle discoverable and avoid passing large specs as shell arguments.
+
+```bash
+# Create an OAuth connection without putting the client secret in shell history
+export ASANA_CLIENT_SECRET=...
+daptin-cli oauth connect create asana.com \
+  --client-id "$ASANA_CLIENT_ID" \
+  --client-secret-env ASANA_CLIENT_SECRET \
+  --auth-url https://app.asana.com/-/oauth_authorize \
+  --token-url https://app.asana.com/-/oauth_token \
+  --profile-url https://app.asana.com/api/1.0/users/me \
+  --scope default
+
+# Start the browser OAuth flow and list token references after callback
+daptin-cli oauth login-url asana.com
+daptin-cli oauth tokens list --provider asana.com
+```
+
+Import large OpenAPI specs from files, URLs, or stdin:
+
+```bash
+daptin-cli integration import \
+  --provider asana.com \
+  --spec-file ./asana_oas.yaml \
+  --auth oauth2 \
+  --oauth-connect asana.com \
+  --update
+
+daptin-cli integration install asana.com
+```
+
+Discover installed operations through Daptin's scoped integration discovery endpoints:
+
+```bash
+daptin-cli integration list
+daptin-cli integration operations asana.com
+daptin-cli integration describe asana.com getWorkspaces
+```
+
+Execute provider-scoped operations:
+
+```bash
+daptin-cli integration execute asana.com getWorkspaces \
+  --oauth-token-id <oauth_token_reference_id> \
+  --input-json '{"opt_fields":["name"]}'
+
+daptin-cli integration execute example.com listUsers \
+  --credential-id <credential_reference_id> \
+  limit=10
+```
+
+`integration operations` and `integration describe` require Daptin versions with scoped discovery endpoints: `GET /integration/:provider/operations` and `GET /integration/:provider/operations/:operation`.
 
 ## Storage
 

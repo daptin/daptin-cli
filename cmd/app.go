@@ -26,6 +26,20 @@ func NewApp(cfg *config.Config, version string) *cli.App {
 		Name:    "daptin",
 		Usage:   "CLI client for Daptin API server",
 		Version: version,
+		ExitErrHandler: func(c *cli.Context, err error) {
+			if err == nil {
+				return
+			}
+			if exitErr, ok := err.(cli.ExitCoder); ok {
+				if err.Error() != "" {
+					fmt.Fprintln(os.Stderr, err)
+				}
+				cli.OsExiter(exitErr.ExitCode())
+				return
+			}
+			fmt.Fprintln(os.Stderr, err)
+			cli.OsExiter(1)
+		},
 		Before: func(c *cli.Context) error {
 			InitLogger(c.Bool("debug"))
 
@@ -121,6 +135,8 @@ func NewApp(cfg *config.Config, version string) *cli.App {
 			unrelateCommand(appCtx),
 			describeCommand(appCtx),
 			executeCommand(appCtx),
+			oauthCommand(appCtx),
+			integrationCommand(appCtx),
 			storageCommand(appCtx),
 			assetCommand(appCtx),
 			permissionCommand(appCtx),

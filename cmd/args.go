@@ -8,7 +8,8 @@ var knownCommands = map[string]bool{
 	"context": true, "list": true, "get": true, "create": true,
 	"update": true, "delete": true, "related": true, "describe": true,
 	"execute": true, "help": true, "relate": true, "unrelate": true,
-	"permission": true, "storage": true, "asset": true,
+	"permission": true, "storage": true, "asset": true, "oauth": true,
+	"integration": true,
 }
 
 // Only commands that actually have subcommands, mapped to their subcommand names.
@@ -20,39 +21,77 @@ var commandSubcommands = map[string]map[string]bool{
 		"add": true, "list": true, "remove": true, "ls": true,
 		"upload": true, "download": true, "mv": true, "rm": true, "mkdir": true,
 	},
-	"asset": {"upload": true, "list": true},
+	"asset":   {"upload": true, "list": true},
+	"oauth":   {"connect": true, "login-url": true, "tokens": true},
+	"connect": {"create": true, "list": true},
+	"tokens":  {"list": true},
+	"integration": {
+		"import": true, "install": true, "list": true, "operations": true,
+		"describe": true, "execute": true,
+	},
 }
 
 var valueFlags = map[string]bool{
 	"--config": true, "-c": true,
 	"--output": true, "-o": true,
-	"--endpoint":       true,
-	"--columns":        true,
-	"--page-size":      true,
-	"--page":           true,
-	"--sort":           true,
-	"--filter":         true,
-	"--include":        true,
-	"--reference-id":   true,
-	"--type":           true,
-	"--provider":       true,
-	"--store-provider": true,
-	"--access-key":     true,
-	"--secret-key":     true,
-	"--bucket":         true,
-	"--root-path":      true,
-	"--credential":     true,
-	"--param":          true,
+	"--endpoint":              true,
+	"--columns":               true,
+	"--page-size":             true,
+	"--page":                  true,
+	"--sort":                  true,
+	"--filter":                true,
+	"--include":               true,
+	"--reference-id":          true,
+	"--type":                  true,
+	"--provider":              true,
+	"--store-provider":        true,
+	"--access-key":            true,
+	"--secret-key":            true,
+	"--bucket":                true,
+	"--root-path":             true,
+	"--credential":            true,
+	"--param":                 true,
+	"--spec-file":             true,
+	"--spec-url":              true,
+	"--spec-format":           true,
+	"--spec-language":         true,
+	"--auth":                  true,
+	"--oauth-connect":         true,
+	"--auth-spec-json":        true,
+	"--auth-spec-file":        true,
+	"--oauth-token-id":        true,
+	"--credential-id":         true,
+	"--input-json":            true,
+	"--input-file":            true,
+	"--client-id":             true,
+	"--client-secret":         true,
+	"--client-secret-env":     true,
+	"--client-secret-file":    true,
+	"--scope":                 true,
+	"--response-type":         true,
+	"--redirect-uri":          true,
+	"--auth-url":              true,
+	"--token-url":             true,
+	"--profile-url":           true,
+	"--profile-email-path":    true,
+	"--pkce-challenge-method": true,
 }
 
 var boolFlags = map[string]bool{
 	"--debug":       true,
 	"--no-truncate": true,
 	"--quiet":       true, "-q": true,
-	"--interactive": true,
-	"--restart":     true,
-	"--recursive":   true,
-	"--help":        true, "-h": true,
+	"--interactive":         true,
+	"--restart":             true,
+	"--recursive":           true,
+	"--spec-stdin":          true,
+	"--disable":             true,
+	"--update":              true,
+	"--allow-login":         true,
+	"--access-type-offline": true,
+	"--pkce":                true,
+	"--open":                true,
+	"--help":                true, "-h": true,
 	"--version": true, "-v": true,
 }
 
@@ -75,10 +114,15 @@ func ReorderArgs(args []string) []string {
 		return args
 	}
 
-	// Start of the command's own args (after command + optional subcommand)
+	// Start of the command's own args (after command + optional subcommands)
 	argsStart := cmdIdx + 1
 	cmdName := args[cmdIdx]
-	if subs, ok := commandSubcommands[cmdName]; ok && argsStart < len(args) && subs[args[argsStart]] {
+	for {
+		subs, ok := commandSubcommands[cmdName]
+		if !ok || argsStart >= len(args) || !subs[args[argsStart]] {
+			break
+		}
+		cmdName = args[argsStart]
 		argsStart++
 	}
 
