@@ -8,7 +8,7 @@ var knownCommands = map[string]bool{
 	"context": true, "list": true, "get": true, "create": true,
 	"update": true, "delete": true, "related": true, "describe": true,
 	"execute": true, "help": true, "relate": true, "unrelate": true,
-	"permission": true,
+	"permission": true, "storage": true, "asset": true,
 }
 
 // Only commands that actually have subcommands, mapped to their subcommand names.
@@ -16,6 +16,44 @@ var commandSubcommands = map[string]map[string]bool{
 	"context":    {"set": true, "add": true, "list": true},
 	"describe":   {"table": true, "action": true},
 	"permission": {"decode": true, "encode": true},
+	"storage": {
+		"add": true, "list": true, "remove": true, "ls": true,
+		"upload": true, "download": true, "mv": true, "rm": true, "mkdir": true,
+	},
+	"asset": {"upload": true, "list": true},
+}
+
+var valueFlags = map[string]bool{
+	"--config": true, "-c": true,
+	"--output": true, "-o": true,
+	"--endpoint":       true,
+	"--columns":        true,
+	"--page-size":      true,
+	"--page":           true,
+	"--sort":           true,
+	"--filter":         true,
+	"--include":        true,
+	"--reference-id":   true,
+	"--type":           true,
+	"--provider":       true,
+	"--store-provider": true,
+	"--access-key":     true,
+	"--secret-key":     true,
+	"--bucket":         true,
+	"--root-path":      true,
+	"--credential":     true,
+	"--param":          true,
+}
+
+var boolFlags = map[string]bool{
+	"--debug":       true,
+	"--no-truncate": true,
+	"--quiet":       true, "-q": true,
+	"--interactive": true,
+	"--restart":     true,
+	"--recursive":   true,
+	"--help":        true, "-h": true,
+	"--version": true, "-v": true,
 }
 
 // ReorderArgs moves --flags that appear after positional args to before them,
@@ -61,7 +99,7 @@ func ReorderArgs(args []string) []string {
 		if strings.HasPrefix(arg, "-") {
 			flags = append(flags, arg)
 			// If it's --flag=value, the value is included. Otherwise peek next.
-			if !strings.Contains(arg, "=") && i+1 < len(commandArgs) && !strings.HasPrefix(commandArgs[i+1], "-") && !strings.Contains(commandArgs[i+1], "=") {
+			if flagConsumesNextValue(arg, commandArgs, i) {
 				flags = append(flags, commandArgs[i+1])
 				i++
 			}
@@ -76,6 +114,22 @@ func ReorderArgs(args []string) []string {
 	result = append(result, flags...)
 	result = append(result, positional...)
 	return result
+}
+
+func flagConsumesNextValue(arg string, commandArgs []string, index int) bool {
+	if strings.Contains(arg, "=") || index+1 >= len(commandArgs) {
+		return false
+	}
+	if boolFlags[arg] {
+		return false
+	}
+
+	next := commandArgs[index+1]
+	if valueFlags[arg] {
+		return !strings.HasPrefix(next, "--")
+	}
+
+	return !strings.HasPrefix(next, "-") && !strings.Contains(next, "=")
 }
 
 // findCommandIndex returns the index of the first known command in args,

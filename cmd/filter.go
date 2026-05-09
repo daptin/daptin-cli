@@ -61,7 +61,11 @@ func ParseFilter(input string) ([]FilterClause, error) {
 	parts := strings.Split(input, ";")
 	clauses := make([]FilterClause, 0, len(parts))
 	for _, part := range parts {
-		clause, err := parseSingleFilter(strings.TrimSpace(part))
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		clause, err := parseSingleFilter(part)
 		if err != nil {
 			return nil, err
 		}
@@ -71,6 +75,10 @@ func ParseFilter(input string) ([]FilterClause, error) {
 }
 
 func parseSingleFilter(expr string) (FilterClause, error) {
+	if clause, ok := parseEqualsFilter(expr); ok {
+		return clause, nil
+	}
+
 	// Format: <column> <operator> [value]
 	// Try two-word operators first
 	for _, op := range twoWordOperators {
@@ -90,7 +98,7 @@ func parseSingleFilter(expr string) (FilterClause, error) {
 	// Try single-word operators
 	words := strings.Fields(expr)
 	if len(words) < 2 {
-		return FilterClause{}, fmt.Errorf("invalid filter expression: %q (expected: <column> <operator> [value])", expr)
+		return FilterClause{}, invalidFilterExpression(expr)
 	}
 
 	column := words[0]
@@ -105,7 +113,7 @@ func parseSingleFilter(expr string) (FilterClause, error) {
 		}
 	}
 	if !valid {
-		return FilterClause{}, fmt.Errorf("unknown filter operator %q in expression %q", operator, expr)
+		return FilterClause{}, fmt.Errorf("unknown filter operator %q in expression %q. Example: --filter 'name is users'", operator, expr)
 	}
 
 	value := ""
@@ -113,6 +121,32 @@ func parseSingleFilter(expr string) (FilterClause, error) {
 		value = strings.Join(words[2:], " ")
 	}
 	return FilterClause{Column: column, Operator: operator, Value: value}, nil
+}
+
+func parseEqualsFilter(expr string) (FilterClause, bool) {
+	operator := ""
+	idx := -1
+	if i := strings.Index(expr, "=="); i >= 0 {
+		operator = "=="
+		idx = i
+	} else if i := strings.Index(expr, "="); i >= 0 {
+		operator = "="
+		idx = i
+	}
+	if idx < 0 {
+		return FilterClause{}, false
+	}
+
+	column := strings.TrimSpace(expr[:idx])
+	value := strings.TrimSpace(expr[idx+len(operator):])
+	if column == "" || value == "" {
+		return FilterClause{}, false
+	}
+	return FilterClause{Column: column, Operator: "is", Value: value}, true
+}
+
+func invalidFilterExpression(expr string) error {
+	return fmt.Errorf("invalid filter expression: %q. Expected: <column> <operator> [value]. Example: --filter 'name is users'", expr)
 }
 
 // FilterToJSON serializes filter clauses to the JSON format Daptin expects.

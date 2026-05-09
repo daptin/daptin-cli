@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	daptinClient "github.com/daptin/daptin-go-client"
 )
@@ -22,6 +23,14 @@ type ResponseEffect struct {
 
 	// For "render_object" / "file_download"
 	Data map[string]interface{}
+}
+
+type ActionSchema struct {
+	EntityName       string
+	ActionName       string
+	ReferenceID      string
+	InstanceOptional bool
+	InFields         []map[string]interface{}
 }
 
 // ProcessResponses converts raw action responses into a list of effects.
@@ -57,6 +66,20 @@ func ProcessResponses(responses []daptinClient.DaptinActionResponse) []ResponseE
 		}
 	}
 	return effects
+}
+
+func BuildActionSuccessEffect(entityName, actionName, referenceID string) ResponseEffect {
+	message := fmt.Sprintf("OK: %s.%s executed", entityName, actionName)
+	data := map[string]interface{}{
+		"ok":     true,
+		"entity": entityName,
+		"action": actionName,
+	}
+	if referenceID != "" {
+		message = fmt.Sprintf("%s for %s", message, referenceID)
+		data["reference_id"] = referenceID
+	}
+	return ResponseEffect{Type: "success", Message: message, Data: data}
 }
 
 // FieldPrompt describes a field that needs user input.
@@ -136,14 +159,25 @@ func FindWorldRefId(worldAttrs []map[string]interface{}, entityName string) stri
 // FindActionRefId finds an action's reference_id by name and world_id from pre-fetched action attributes.
 // Pure function.
 func FindActionRefId(actionAttrs []map[string]interface{}, worldRefId, actionName string) string {
+	meta := FindActionMetadata(actionAttrs, worldRefId, "", actionName)
+	return meta.ReferenceID
+}
+
+func FindActionMetadata(actionAttrs []map[string]interface{}, worldRefId, entityName, actionName string) ActionSchema {
 	for _, a := range actionAttrs {
 		if a["action_name"] == actionName && a["world_id"] == worldRefId {
-			if refId, ok := a["reference_id"].(string); ok {
-				return refId
+			meta := ActionSchema{
+				EntityName:       entityName,
+				ActionName:       actionName,
+				InstanceOptional: boolValue(a["instance_optional"]),
 			}
+			if refID, ok := a["reference_id"].(string); ok {
+				meta.ReferenceID = refID
+			}
+			return meta
 		}
 	}
-	return ""
+	return ActionSchema{}
 }
 
 // DecodeActionSchemaResponse extracts and parses InFields from a get_action_schema response.
@@ -165,4 +199,15 @@ func DecodeActionSchemaResponse(responses []daptinClient.DaptinActionResponse) (
 		}
 	}
 	return nil, fmt.Errorf("no schema in response")
+}
+
+func boolValue(value interface{}) bool {
+	switch v := value.(type) {
+	case bool:
+		return v
+	case string:
+		return strings.EqualFold(v, "true")
+	default:
+		return false
+	}
 }

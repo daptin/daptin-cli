@@ -15,6 +15,16 @@ func TestReorderArgs_FlagsAfterPositional(t *testing.T) {
 	}
 }
 
+func TestReorderArgs_FilterValueWithEquals(t *testing.T) {
+	input := []string{"daptin", "list", "usergroup", "--filter", "name=users"}
+	expected := []string{"daptin", "list", "--filter", "name=users", "usergroup"}
+
+	result := ReorderArgs(input)
+	if !reflect.DeepEqual(result, expected) {
+		t.Errorf("expected %v, got %v", expected, result)
+	}
+}
+
 func TestReorderArgs_AlreadyCorrect(t *testing.T) {
 	input := []string{"daptin", "list", "--filter", "foo", "usergroup"}
 	expected := []string{"daptin", "list", "--filter", "foo", "usergroup"}
@@ -88,6 +98,26 @@ func TestReorderArgs_BoolFlag(t *testing.T) {
 func TestReorderArgs_MultipleFlagsAfterArg(t *testing.T) {
 	input := []string{"daptin", "list", "usergroup", "--sort", "name", "--page-size", "50", "--page", "2"}
 	expected := []string{"daptin", "list", "--sort", "name", "--page-size", "50", "--page", "2", "usergroup"}
+
+	result := ReorderArgs(input)
+	if !reflect.DeepEqual(result, expected) {
+		t.Errorf("expected %v, got %v", expected, result)
+	}
+}
+
+func TestReorderArgs_SortDescendingValue(t *testing.T) {
+	input := []string{"daptin", "list", "document", "--sort", "-created_at"}
+	expected := []string{"daptin", "list", "--sort", "-created_at", "document"}
+
+	result := ReorderArgs(input)
+	if !reflect.DeepEqual(result, expected) {
+		t.Errorf("expected %v, got %v", expected, result)
+	}
+}
+
+func TestReorderArgs_StorageAddFlagsAfterName(t *testing.T) {
+	input := []string{"daptin", "storage", "add", "minio", "--type", "s3", "--endpoint", "http://localhost:9000"}
+	expected := []string{"daptin", "storage", "add", "--type", "s3", "--endpoint", "http://localhost:9000", "minio"}
 
 	result := ReorderArgs(input)
 	if !reflect.DeepEqual(result, expected) {

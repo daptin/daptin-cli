@@ -121,6 +121,8 @@ func NewApp(cfg *config.Config, version string) *cli.App {
 			unrelateCommand(appCtx),
 			describeCommand(appCtx),
 			executeCommand(appCtx),
+			storageCommand(appCtx),
+			assetCommand(appCtx),
 			permissionCommand(appCtx),
 			wsCommand(appCtx),
 		},

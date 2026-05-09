@@ -34,6 +34,28 @@ func TestParseFilter_Equals(t *testing.T) {
 	}
 }
 
+func TestParseFilter_KeyValueShorthand(t *testing.T) {
+	tests := []string{"name=users", "name==users", " name = users "}
+	for _, input := range tests {
+		result, err := ParseFilter(input)
+		if err != nil {
+			t.Fatalf("input %q: unexpected error: %v", input, err)
+		}
+		if len(result) != 1 {
+			t.Fatalf("input %q: expected 1 filter, got %d", input, len(result))
+		}
+		if result[0].Column != "name" {
+			t.Errorf("input %q: expected name, got %s", input, result[0].Column)
+		}
+		if result[0].Operator != "is" {
+			t.Errorf("input %q: expected is, got %s", input, result[0].Operator)
+		}
+		if result[0].Value != "users" {
+			t.Errorf("input %q: expected users, got %s", input, result[0].Value)
+		}
+	}
+}
+
 func TestParseFilter_TwoWordOperator(t *testing.T) {
 	tests := []struct {
 		input    string

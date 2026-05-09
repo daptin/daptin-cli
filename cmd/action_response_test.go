@@ -189,6 +189,23 @@ func TestProcessResponses_StoreSetNonToken(t *testing.T) {
 	}
 }
 
+func TestBuildActionSuccessEffect(t *testing.T) {
+	effect := BuildActionSuccessEffect("integration", "install_integration", "ref-123")
+
+	if effect.Type != "success" {
+		t.Fatalf("expected success effect, got %s", effect.Type)
+	}
+	if effect.Message != "OK: integration.install_integration executed for ref-123" {
+		t.Errorf("unexpected message: %s", effect.Message)
+	}
+	if effect.Data["ok"] != true {
+		t.Errorf("expected ok=true, got %v", effect.Data["ok"])
+	}
+	if effect.Data["reference_id"] != "ref-123" {
+		t.Errorf("expected reference_id ref-123, got %v", effect.Data["reference_id"])
+	}
+}
+
 // --- MissingFields tests ---
 
 func TestMissingFields_AllProvided(t *testing.T) {
@@ -357,6 +374,39 @@ func TestFindActionRefId_WrongWorld(t *testing.T) {
 	refId := FindActionRefId(actions, "uuid-user", "signin")
 	if refId != "" {
 		t.Errorf("expected empty for wrong world, got %s", refId)
+	}
+}
+
+func TestFindActionMetadata(t *testing.T) {
+	actions := []map[string]interface{}{
+		{"action_name": "install_integration", "world_id": "uuid-integration", "reference_id": "ref-install", "instance_optional": false},
+	}
+
+	meta := FindActionMetadata(actions, "uuid-integration", "integration", "install_integration")
+
+	if meta.ReferenceID != "ref-install" {
+		t.Errorf("expected ref-install, got %s", meta.ReferenceID)
+	}
+	if meta.EntityName != "integration" {
+		t.Errorf("expected integration, got %s", meta.EntityName)
+	}
+	if meta.ActionName != "install_integration" {
+		t.Errorf("expected install_integration, got %s", meta.ActionName)
+	}
+	if meta.InstanceOptional {
+		t.Error("expected instance_optional false")
+	}
+}
+
+func TestFindActionMetadata_StringBool(t *testing.T) {
+	actions := []map[string]interface{}{
+		{"action_name": "signin", "world_id": "uuid-user", "reference_id": "ref-signin", "instance_optional": "true"},
+	}
+
+	meta := FindActionMetadata(actions, "uuid-user", "user_account", "signin")
+
+	if !meta.InstanceOptional {
+		t.Error("expected string true to parse as true")
 	}
 }
 

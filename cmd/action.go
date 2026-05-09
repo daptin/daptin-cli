@@ -9,6 +9,7 @@ import (
 	"syscall"
 
 	"github.com/daptin/daptin-cli/client"
+	"github.com/daptin/daptin-cli/render"
 	daptinClient "github.com/daptin/daptin-go-client"
 	"github.com/urfave/cli/v2"
 	"golang.org/x/term"
@@ -48,7 +49,7 @@ func executeCommand(appCtx *AppContext) *cli.Command {
 				slog.Debug("interactive mode enabled, fetching schema")
 				schema, schemaErr := fetchActionSchemaFromServer(appCtx, entityName, actionName)
 				if schemaErr == nil {
-					prompts := MissingFields(schema, attrs)
+					prompts := MissingFields(schema.InFields, attrs)
 					filled, err := promptUser(prompts)
 					if err != nil {
 						return err
@@ -70,6 +71,9 @@ func executeCommand(appCtx *AppContext) *cli.Command {
 
 			// Pure: compute effects from responses
 			effects := ProcessResponses(responses)
+			if len(effects) == 0 {
+				effects = append(effects, BuildActionSuccessEffect(entityName, actionName, c.String("reference-id")))
+			}
 
 			// IO boundary: apply effects
 			return applyEffects(effects, appCtx)
@@ -103,6 +107,17 @@ func applyEffects(effects []ResponseEffect, appCtx *AppContext) error {
 			if err := appCtx.Renderer.RenderObject(e.Data); err != nil {
 				return err
 			}
+		case "success":
+			if appCtx.Quiet {
+				continue
+			}
+			if _, ok := appCtx.Renderer.(*render.JsonRenderer); ok {
+				if err := appCtx.Renderer.RenderObject(e.Data); err != nil {
+					return err
+				}
+				continue
+			}
+			fmt.Fprintln(os.Stdout, e.Message)
 		}
 	}
 	return nil
@@ -110,43 +125,48 @@ func applyEffects(effects []ResponseEffect, appCtx *AppContext) error {
 
 // fetchActionSchemaFromServer fetches InFields for an action via the API.
 // IO boundary: makes HTTP calls, then delegates to pure functions.
-func fetchActionSchemaFromServer(appCtx *AppContext, entityName, actionName string) ([]map[string]interface{}, error) {
+func fetchActionSchemaFromServer(appCtx *AppContext, entityName, actionName string) (ActionSchema, error) {
 	slog.Debug("fetching action schema", "entity", entityName, "action", actionName)
 	worlds, err := appCtx.Client.FindAll("world", daptinClient.DaptinQueryParameters{
 		"page[size]": 500,
 	})
 	if err != nil {
-		return nil, err
+		return ActionSchema{}, err
 	}
 
 	worldAttrs := client.MapArray(worlds, "attributes")
 	worldRefId := FindWorldRefId(worldAttrs, entityName)
 	if worldRefId == "" {
-		return nil, fmt.Errorf("entity %q not found", entityName)
+		return ActionSchema{}, fmt.Errorf("entity %q not found", entityName)
 	}
 
 	actions, err := appCtx.Client.FindAll("action", daptinClient.DaptinQueryParameters{
 		"page[size]": 500,
 	})
 	if err != nil {
-		return nil, err
+		return ActionSchema{}, err
 	}
 
 	actionAttrs := client.MapArray(actions, "attributes")
-	actionRefId := FindActionRefId(actionAttrs, worldRefId, actionName)
-	if actionRefId == "" {
-		return nil, fmt.Errorf("action %q not found on %q", actionName, entityName)
+	schema := FindActionMetadata(actionAttrs, worldRefId, entityName, actionName)
+	if schema.ReferenceID == "" {
+		return ActionSchema{}, fmt.Errorf("action %q not found on %q", actionName, entityName)
 	}
 
 	// Execute get_action_schema to retrieve the schema (base64 encoded)
 	responses, err := appCtx.Client.Execute("get_action_schema", "action", daptinClient.JsonApiObject{
-		"action_id": actionRefId,
+		"action_id": schema.ReferenceID,
 	})
 	if err != nil {
-		return nil, err
+		return ActionSchema{}, err
 	}
 
-	return DecodeActionSchemaResponse(responses)
+	inFields, err := DecodeActionSchemaResponse(responses)
+	if err != nil {
+		return ActionSchema{}, err
+	}
+	schema.InFields = inFields
+	return schema, nil
 }
 
 // promptUser performs IO to collect values for missing fields.

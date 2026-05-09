@@ -142,11 +142,28 @@ func describeAction(appCtx *AppContext, entityName, actionName string) error {
 		return err
 	}
 
-	fmt.Printf("InFields: %d\n", len(schema))
-	for _, field := range schema {
+	refRequired := !schema.InstanceOptional
+	fmt.Printf("Action: %s\n", schema.ActionName)
+	fmt.Printf("Instance action: %s\n", yesNo(refRequired))
+	fmt.Printf("Reference id required: %s\n", yesNo(refRequired))
+	fmt.Printf("InFields: %d\n", len(schema.InFields))
+	for _, field := range schema.InFields {
 		colName, _ := field["ColumnName"].(string)
 		colType, _ := field["ColumnType"].(string)
 		fmt.Printf("  %s: %s\n", colName, colType)
 	}
+	fmt.Println("Example:")
+	if refRequired {
+		fmt.Printf("  daptin-cli execute %s %s --reference-id <%s_reference_id>\n", entityName, actionName, entityName)
+	} else {
+		fmt.Printf("  daptin-cli execute %s %s\n", entityName, actionName)
+	}
 	return nil
+}
+
+func yesNo(value bool) string {
+	if value {
+		return "yes"
+	}
+	return "no"
 }
