@@ -137,6 +137,19 @@ func TestBuildFindOneURL_WithParams(t *testing.T) {
 	}
 }
 
+func TestBuildFindAllURL_WithParams(t *testing.T) {
+	params := map[string]interface{}{
+		"page[size]":   50,
+		"page[number]": 2,
+		"query":        `{"name":"admin"}`,
+	}
+	u := BuildFindAllURL("http://localhost:6336", "usergroup", params)
+	expected := `http://localhost:6336/api/usergroup?page%5Bnumber%5D=2&page%5Bsize%5D=50&query=%7B%22name%22%3A%22admin%22%7D`
+	if u != expected {
+		t.Errorf("expected %s, got %s", expected, u)
+	}
+}
+
 func TestMapArray(t *testing.T) {
 	objects := []daptinClient.JsonApiObject{
 		{"id": "1", "attributes": map[string]interface{}{"name": "a"}},

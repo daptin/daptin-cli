@@ -96,3 +96,18 @@ func BuildFindOneURL(endpoint, tableName, referenceId string, parameters map[str
 	slog.Debug("built FindOne URL", "url", u)
 	return u
 }
+
+// BuildFindAllURL constructs the URL for a list request.
+// Pure function.
+func BuildFindAllURL(endpoint, tableName string, parameters map[string]interface{}) string {
+	u := endpoint + "/api/" + tableName
+	if len(parameters) > 0 {
+		params := url.Values{}
+		for k, v := range parameters {
+			params.Set(k, fmt.Sprintf("%v", v))
+		}
+		u = u + "?" + params.Encode()
+	}
+	slog.Debug("built FindAll URL", "url", u)
+	return u
+}

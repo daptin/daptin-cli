@@ -2,7 +2,9 @@ package client
 
 import (
 	"errors"
+	"fmt"
 	"log/slog"
+	"strings"
 
 	daptinClient "github.com/daptin/daptin-go-client"
 	"github.com/go-resty/resty/v2"
@@ -81,6 +83,38 @@ func (e *ExtendedClient) FindOne(tableName, referenceId string, parameters dapti
 	return ParseSingleResponse(resp.Body())
 }
 
+// FindAll overrides the upstream to handle unsupported/malformed API responses
+// without panicking on JSON:API data shape assertions.
+func (e *ExtendedClient) FindAll(tableName string, parameters daptinClient.DaptinQueryParameters) ([]daptinClient.JsonApiObject, error) {
+	u := BuildFindAllURL(e.Endpoint, tableName, parameters)
+	slog.Debug("FindAll", "url", u)
+
+	resp, err := e.nextRequest().Get(u)
+	if err := e.checkResponse(resp, err); err != nil {
+		if errors.Is(err, ErrNotFound) && looksLikeJoinTable(tableName) {
+			return nil, unsupportedJoinTableError(tableName)
+		}
+		return nil, err
+	}
+
+	items, err := ParseListResponse(resp.Body())
+	if err != nil {
+		return nil, err
+	}
+	if items == nil {
+		if looksLikeJoinTable(tableName) {
+			return nil, unsupportedJoinTableError(tableName)
+		}
+		return nil, fmt.Errorf("unexpected list response for %q: expected JSON:API data array", tableName)
+	}
+
+	result := make([]daptinClient.JsonApiObject, 0, len(items))
+	for _, item := range items {
+		result = append(result, daptinClient.JsonApiObject(item))
+	}
+	return result, nil
+}
+
 // Update overrides the upstream to handle error responses without panicking.
 func (e *ExtendedClient) Update(tableName, referenceId string, object daptinClient.JsonApiObject) (daptinClient.JsonApiObject, error) {
 	u := e.Endpoint + "/api/" + tableName + "/" + referenceId
@@ -120,4 +154,12 @@ func MapArray(objects []daptinClient.JsonApiObject, keyName string) []map[string
 		}
 	}
 	return result
+}
+
+func looksLikeJoinTable(tableName string) bool {
+	return strings.Contains(tableName, "_has_")
+}
+
+func unsupportedJoinTableError(tableName string) error {
+	return fmt.Errorf("%q looks like a generated join table. Daptin join tables are internal storage and are not exposed as API entities; use the owning API entity and relation/permission commands instead", tableName)
 }
