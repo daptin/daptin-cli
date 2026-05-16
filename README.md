@@ -246,6 +246,22 @@ daptin-cli describe action document createDocument
 
 Shows whether the action is instance-bound, whether `--reference-id` is required, the action's InFields, and an example `execute` command.
 
+## Table Defaults
+
+Use `table defaults` to inspect and update schema-level defaults before creating
+rows in setup scripts:
+
+```bash
+daptin-cli table defaults get oauth_connect
+daptin-cli table defaults set oauth_connect --permission 1618275
+daptin-cli table defaults group add oauth_connect users --permission 1618275
+daptin-cli table defaults ensure oauth_connect --permission 1618275 --group users:1618275
+```
+
+These commands update the table's `world_schema_json`; restart Daptin or run the
+supported reload flow before relying on changed defaults in a long-running
+server process.
+
 ## OAuth And Integrations
 
 OAuth provider setup and OpenAPI integration workflows have first-class wrappers. The generic `create`, `list`, `describe action`, and `execute` commands still work, but these commands keep the common lifecycle discoverable and avoid passing large specs as shell arguments.
@@ -269,6 +285,8 @@ daptin-cli oauth tokens list --provider asana.com
 Import large OpenAPI specs from files, URLs, or stdin:
 
 ```bash
+daptin-cli integration validate-spec --spec-file ./provider.yaml
+
 daptin-cli integration import \
   --provider asana.com \
   --spec-file ./asana_oas.yaml \
@@ -279,11 +297,46 @@ daptin-cli integration import \
 daptin-cli integration install asana.com
 ```
 
+Transport extensions can be patched during import for generated facade specs:
+
+```bash
+daptin-cli integration import \
+  --provider linear.app \
+  --spec-file ./linear-openapi.yaml \
+  --auth custom_credentials \
+  --auth-spec-file ./linear-auth.json \
+  --set-operation-transport listIssues=graphql \
+  --set-operation-upstream-path listIssues=/graphql \
+  --set-graphql-document-file listIssues=./list_issues.graphql \
+  --set-graphql-operation-name listIssues=ListIssues \
+  --validate
+```
+
+For gRPC services without reflection, embed a descriptor set during import:
+
+```bash
+daptin-cli integration import \
+  --provider grpc.example \
+  --spec-file ./grpc-facade.yaml \
+  --auth custom_credentials \
+  --auth-spec-file ./grpc-auth.json \
+  --set-operation-transport Search=grpc \
+  --set-grpc-service Search=grpc.testing.SearchService \
+  --set-grpc-method Search=Search \
+  --grpc-descriptor-set Search=./search.protoset \
+  --validate
+```
+
+The CLI can also invoke `protoc` with `--grpc-proto Search=./proto/search.proto`
+and optional `--grpc-proto-path Search=./proto`; descriptor blobs are embedded
+in the imported spec but hidden from normal discovery output.
+
 Discover installed operations through Daptin's scoped integration discovery endpoints:
 
 ```bash
 daptin-cli integration list
 daptin-cli integration operations asana.com
+daptin-cli integration operations asana.com --columns operation_id,method,path,transport
 daptin-cli integration describe asana.com getWorkspaces
 ```
 
@@ -297,6 +350,18 @@ daptin-cli integration execute asana.com getWorkspaces \
 daptin-cli integration execute example.com listUsers \
   --credential-id <credential_reference_id> \
   limit=10
+
+daptin-cli integration execute linear.app listIssues \
+  --credential-id <credential_reference_id> \
+  --input-json '{"first":2,"after":"cursor"}'
+
+daptin-cli integration execute realtime.example wsSearch \
+  --credential-id <credential_reference_id> \
+  query=tickets
+
+daptin-cli integration execute grpc.example Search \
+  --credential-id <credential_reference_id> \
+  query=daptin
 ```
 
 `integration operations` and `integration describe` require Daptin versions with scoped discovery endpoints: `GET /integration/:provider/operations` and `GET /integration/:provider/operations/:operation`.
@@ -423,3 +488,21 @@ DAPTIN_CLI_CONFIG    Config file path
 DAPTIN_ENDPOINT      Server endpoint
 DAPTIN_CLI_OUTPUT    Output format
 ```
+
+## E2E Tests
+
+The regular Go test suite stays lightweight:
+
+```bash
+go test ./...
+```
+
+To run the real integration transport E2E, provide either `DAPTIN_BINARY` or a
+local Daptin source checkout via `DAPTIN_SOURCE_DIR` (defaults to `../daptin`):
+
+```bash
+DAPTIN_SOURCE_DIR=../daptin ./scripts/integration-transport-e2e.sh
+```
+
+This starts a fresh Daptin process, local REST/GraphQL/WebSocket/gRPC upstreams,
+and exercises the integration lifecycle using only `daptin-cli` commands.

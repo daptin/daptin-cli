@@ -76,6 +76,41 @@ func TestBuildIntegrationOperationBody(t *testing.T) {
 	}
 }
 
+func TestOperationDetailForRenderFlattensTransportMetadata(t *testing.T) {
+	rendered := operationDetailForRender(map[string]interface{}{
+		"operation_id": "Search",
+		"extensions": map[string]interface{}{
+			"daptin_transport": map[string]interface{}{
+				"type":         "grpc",
+				"grpc_service": "grpc.testing.SearchService",
+				"grpc_method":  "Search",
+			},
+		},
+	})
+	if rendered["transport"] != "grpc" {
+		t.Fatalf("expected grpc transport, got %#v", rendered["transport"])
+	}
+	if rendered["grpc_service"] != "grpc.testing.SearchService" {
+		t.Fatalf("expected grpc service, got %#v", rendered["grpc_service"])
+	}
+}
+
+func TestOperationDetailForRenderDefaultsRestTransport(t *testing.T) {
+	rendered := operationDetailForRender(map[string]interface{}{"operation_id": "getTask"})
+	if rendered["transport"] != "rest" {
+		t.Fatalf("expected rest transport, got %#v", rendered["transport"])
+	}
+}
+
+func TestRequestedTransportColumns(t *testing.T) {
+	if !requestedTransportColumns(splitCSV("operation_id, transport")) {
+		t.Fatal("expected transport column request to require hydration")
+	}
+	if requestedTransportColumns(splitCSV("operation_id,method,path")) {
+		t.Fatal("did not expect basic columns to require hydration")
+	}
+}
+
 func TestNormalizeIntegrationAuthType(t *testing.T) {
 	got, err := normalizeIntegrationAuthType("custom")
 	if err != nil {

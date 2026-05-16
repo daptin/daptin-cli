@@ -140,6 +140,7 @@ func NewApp(cfg *config.Config, version string) *cli.App {
 			storageCommand(appCtx),
 			assetCommand(appCtx),
 			permissionCommand(appCtx),
+			tableCommand(appCtx),
 			wsCommand(appCtx),
 		},
 	}

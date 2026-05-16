@@ -21,12 +21,14 @@ func integrationCommand(appCtx *AppContext) *cli.Command {
 		Usage: "Import, install, inspect, and execute OpenAPI integrations",
 		UsageText: `daptin integration <command> [options]
    daptin integration import --provider asana.com --spec-file ./asana_oas.yaml --auth oauth2 --oauth-connect asana.com
+   daptin integration validate-spec --spec-file ./provider.yaml
    daptin integration install asana.com
    daptin integration operations asana.com
    daptin integration describe asana.com getWorkspaces
    daptin integration execute asana.com getWorkspaces --oauth-token-id <token_ref> --input-json '{"opt_fields":["name"]}'`,
 		Description: "Wraps Daptin integration rows, install_integration, and provider-scoped /integration/<provider>/<operation> execution.",
 		Subcommands: []*cli.Command{
+			integrationValidateSpecCommand(appCtx),
 			integrationImportCommand(appCtx),
 			integrationInstallCommand(appCtx),
 			integrationListCommand(appCtx),
@@ -57,6 +59,21 @@ func integrationImportCommand(appCtx *AppContext) *cli.Command {
 			&cli.StringFlag{Name: "oauth-connect", Usage: "oauth_connect name or reference_id for oauth2 integrations"},
 			&cli.StringFlag{Name: "auth-spec-json", Usage: "Raw authentication_specification JSON for custom_credentials"},
 			&cli.StringFlag{Name: "auth-spec-file", Usage: "Read authentication_specification JSON/YAML from file"},
+			&cli.BoolFlag{Name: "validate", Usage: "Validate Daptin transport extensions before import"},
+			&cli.StringSliceFlag{Name: "set-operation-transport", Usage: "Set x-daptin-transport as operation=value"},
+			&cli.StringSliceFlag{Name: "set-operation-upstream-path", Usage: "Set x-daptin-upstream-path as operation=value"},
+			&cli.StringSliceFlag{Name: "set-operation-timeout-ms", Usage: "Set x-daptin-timeout-ms as operation=milliseconds"},
+			&cli.StringSliceFlag{Name: "set-graphql-document", Usage: "Set x-daptin-graphql-document as operation=query"},
+			&cli.StringSliceFlag{Name: "set-graphql-document-file", Usage: "Read x-daptin-graphql-document from file as operation=path"},
+			&cli.StringSliceFlag{Name: "set-graphql-operation-name", Usage: "Set x-daptin-graphql-operation-name as operation=value"},
+			&cli.StringSliceFlag{Name: "set-websocket-message-template", Usage: "Set x-daptin-websocket-message-template as operation=value"},
+			&cli.StringSliceFlag{Name: "set-websocket-response-selector", Usage: "Set x-daptin-websocket-response-selector as operation=value"},
+			&cli.StringSliceFlag{Name: "set-grpc-service", Usage: "Set x-daptin-grpc-service as operation=value"},
+			&cli.StringSliceFlag{Name: "set-grpc-method", Usage: "Set x-daptin-grpc-method as operation=value"},
+			&cli.StringSliceFlag{Name: "grpc-descriptor-set", Usage: "Embed x-daptin-grpc-descriptor-base64 from an existing descriptor set as operation=path"},
+			&cli.StringSliceFlag{Name: "grpc-proto", Usage: "Generate a descriptor set from a proto file as operation=path"},
+			&cli.StringSliceFlag{Name: "grpc-proto-path", Usage: "Add protoc import path for one operation as operation=path"},
+			&cli.StringFlag{Name: "protoc", Value: "protoc", Usage: "protoc executable used with --grpc-proto"},
 			&cli.BoolFlag{Name: "disable", Usage: "Create/import integration with enable=false"},
 			&cli.BoolFlag{Name: "update", Usage: "Update an existing integration with the same provider name"},
 		},
@@ -70,6 +87,10 @@ func integrationImportCommand(appCtx *AppContext) *cli.Command {
 				return err
 			}
 			specFormat, err := detectSpecFormat(specContent, c.String("spec-format"))
+			if err != nil {
+				return err
+			}
+			specContent, err = prepareIntegrationSpecContent(c, specContent, specFormat)
 			if err != nil {
 				return err
 			}
@@ -199,7 +220,13 @@ func integrationOperationsCommand(appCtx *AppContext) *cli.Command {
 				return nil
 			}
 			if cols := c.String("columns"); cols != "" {
-				ops = render.FilterColumns(ops, strings.Split(cols, ","))
+				colList := splitCSV(cols)
+				if requestedTransportColumns(colList) {
+					if err := hydrateOperationTransportColumns(appCtx, provider, ops); err != nil {
+						return err
+					}
+				}
+				ops = render.FilterColumns(ops, colList)
 			}
 			return appCtx.Renderer.RenderArray(ops)
 		},
@@ -227,7 +254,7 @@ func integrationDescribeCommand(appCtx *AppContext) *cli.Command {
 			if err != nil {
 				return err
 			}
-			return appCtx.Renderer.RenderObject(detail)
+			return appCtx.Renderer.RenderObject(operationDetailForRender(detail))
 		},
 	}
 }
@@ -529,6 +556,89 @@ func operationRowsFromDiscovery(document map[string]interface{}) []map[string]in
 		rows = append(rows, operation)
 	}
 	return rows
+}
+
+func hydrateOperationTransportColumns(appCtx *AppContext, provider string, ops []map[string]interface{}) error {
+	for _, op := range ops {
+		operationID, _ := op["operation_id"].(string)
+		if operationID == "" {
+			continue
+		}
+		detail, err := appCtx.Client.IntegrationOperationDescription(provider, operationID)
+		if err != nil {
+			return err
+		}
+		mergeTransportMetadata(op, detail)
+	}
+	return nil
+}
+
+func operationDetailForRender(detail map[string]interface{}) map[string]interface{} {
+	rendered := make(map[string]interface{}, len(detail)+6)
+	for key, value := range detail {
+		rendered[key] = value
+	}
+	mergeTransportMetadata(rendered, detail)
+	return rendered
+}
+
+func mergeTransportMetadata(target, detail map[string]interface{}) {
+	metadata := daptinTransportMetadata(detail)
+	transport, _ := metadata["type"].(string)
+	if strings.TrimSpace(transport) == "" {
+		transport = "rest"
+	}
+	target["transport"] = transport
+
+	for _, key := range []string{"upstream_path", "operation_name", "grpc_service", "grpc_method", "response_selector"} {
+		if value, ok := metadata[key]; ok {
+			target[key] = value
+		}
+	}
+}
+
+func daptinTransportMetadata(detail map[string]interface{}) map[string]interface{} {
+	extensions, ok := detail["extensions"].(map[string]interface{})
+	if !ok {
+		if typed, ok := detail["extensions"].(map[string]map[string]interface{}); ok {
+			return typed["daptin_transport"]
+		}
+		return nil
+	}
+	transport, ok := extensions["daptin_transport"].(map[string]interface{})
+	if !ok {
+		return nil
+	}
+	return transport
+}
+
+func requestedTransportColumns(columns []string) bool {
+	transportColumns := map[string]bool{
+		"transport":         true,
+		"upstream_path":     true,
+		"operation_name":    true,
+		"grpc_service":      true,
+		"grpc_method":       true,
+		"response_selector": true,
+	}
+	for _, column := range columns {
+		if transportColumns[column] {
+			return true
+		}
+	}
+	return false
+}
+
+func splitCSV(value string) []string {
+	parts := strings.Split(value, ",")
+	result := make([]string, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part != "" {
+			result = append(result, part)
+		}
+	}
+	return result
 }
 
 func parseYAMLOrJSONMap(content string) (map[string]interface{}, error) {
