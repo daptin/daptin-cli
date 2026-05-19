@@ -25,15 +25,9 @@ jobs:
     continue-on-error: true
     services:
       daptin:
-        image: daptin/daptin
+        image: daptin/daptin:v0.12.13
         ports:
-          - 6336:6336
-        options: >-
-          --health-cmd "curl -sf http://localhost:6336/api/world || exit 1"
-          --health-interval 5s
-          --health-timeout 3s
-          --health-retries 10
-          --health-start-period 15s
+          - 6336:8080
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-go@v6
@@ -41,6 +35,13 @@ jobs:
           go-version-file: go.mod
       - name: Build
         run: go build -mod vendor -o daptin-cli .
+      - name: Wait for Daptin
+        run: |
+          for i in {1..60}; do
+            curl -fsS http://localhost:6336/api/world >/dev/null && exit 0
+            sleep 2
+          done
+          exit 1
       - name: E2E tests
         run: DAPTIN_ENDPOINT=http://localhost:6336 bash scripts/e2e.sh
 
