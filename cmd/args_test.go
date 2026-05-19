@@ -135,6 +135,16 @@ func TestReorderArgs_OAuthNestedSubcommand(t *testing.T) {
 	}
 }
 
+func TestReorderArgs_OAuthAppRegister(t *testing.T) {
+	input := []string{"daptin", "oauth", "app", "register", "--name", "App Login", "--redirect-uri", "https://app.example.com/auth/daptin/callback", "--grant", "refresh_token"}
+	expected := []string{"daptin", "oauth", "app", "register", "--name", "App Login", "--redirect-uri", "https://app.example.com/auth/daptin/callback", "--grant", "refresh_token"}
+
+	result := ReorderArgs(input)
+	if !reflect.DeepEqual(result, expected) {
+		t.Errorf("expected %v, got %v", expected, result)
+	}
+}
+
 func TestReorderArgs_IntegrationExecute(t *testing.T) {
 	input := []string{"daptin", "integration", "execute", "asana.com", "getWorkspaces", "--oauth-token-id", "tok", "workspace=abc"}
 	expected := []string{"daptin", "integration", "execute", "--oauth-token-id", "tok", "asana.com", "getWorkspaces", "workspace=abc"}

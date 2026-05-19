@@ -267,6 +267,39 @@ server process.
 OAuth provider setup and OpenAPI integration workflows have first-class wrappers. The generic `create`, `list`, `describe action`, and `execute` commands still work, but these commands keep the common lifecycle discoverable and avoid passing large specs as shell arguments.
 
 ```bash
+# Register a Daptin OAuth provider client app
+export APP_CALLBACK_URL=https://app.example.com/auth/daptin/callback
+daptin-cli oauth app register \
+  --name "App Login" \
+  --redirect-uri "$APP_CALLBACK_URL" \
+  --scope openid \
+  --scope profile \
+  --scope email \
+  --grant authorization_code \
+  --grant refresh_token
+
+# Inspect provider-side OAuth apps and rotate a confidential client secret
+daptin-cli oauth app list
+daptin-cli oauth app describe <client_id_or_reference_id>
+daptin-cli oauth app rotate-secret <client_id_or_reference_id>
+
+# Use the returned client_id/client_secret to configure Daptin self-login
+export DAPTIN_BASE_URL=https://daptin.example.com
+export DAPTIN_SELF_CLIENT_SECRET=...
+daptin-cli oauth connect create daptin-login \
+  --client-id <client_id> \
+  --client-secret-env DAPTIN_SELF_CLIENT_SECRET \
+  --auth-url "$DAPTIN_BASE_URL/oauth/authorize" \
+  --token-url "$DAPTIN_BASE_URL/oauth/token" \
+  --profile-url "$DAPTIN_BASE_URL/oauth/userinfo" \
+  --scope openid,profile,email \
+  --redirect-uri "$APP_CALLBACK_URL" \
+  --profile-email-path email \
+  --allow-login \
+  --pkce \
+  --access-type-offline \
+  --update
+
 # Create an OAuth connection without putting the client secret in shell history
 export ASANA_CLIENT_SECRET=...
 daptin-cli oauth connect create asana.com \

@@ -39,6 +39,32 @@ func TestOAuthClientSecretRequiresSingleSource(t *testing.T) {
 	}
 }
 
+func TestOAuthAppRegisterAttrsDefaults(t *testing.T) {
+	attrs := oauthAppRegisterAttrs("App Login", []string{"https://app.example.com/auth/daptin/callback"}, nil, nil, true)
+	if attrs["name"] != "App Login" {
+		t.Fatalf("unexpected name: %v", attrs["name"])
+	}
+	if attrs["redirect_uris"] != "https://app.example.com/auth/daptin/callback" {
+		t.Fatalf("unexpected redirect_uris: %v", attrs["redirect_uris"])
+	}
+	if attrs["scopes"] != "openid profile email" {
+		t.Fatalf("unexpected scopes: %v", attrs["scopes"])
+	}
+	if attrs["grants"] != "authorization_code refresh_token" {
+		t.Fatalf("unexpected grants: %v", attrs["grants"])
+	}
+	if attrs["is_confidential"] != true {
+		t.Fatalf("expected confidential client, got %v", attrs["is_confidential"])
+	}
+}
+
+func TestOAuthListStringAcceptsRepeatedCommaAndSpaceValues(t *testing.T) {
+	got := oauthListString([]string{"openid,profile", "email offline_access"}, "")
+	if got != "openid profile email offline_access" {
+		t.Fatalf("unexpected list: %q", got)
+	}
+}
+
 func TestRedirectURLFromResponses(t *testing.T) {
 	responses := []daptinClient.DaptinActionResponse{
 		{

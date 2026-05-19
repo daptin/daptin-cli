@@ -24,9 +24,119 @@ func oauthCommand(appCtx *AppContext) *cli.Command {
    daptin oauth tokens list --provider asana.com`,
 		Description: "Wraps Daptin's oauth_connect and oauth_token tables without printing client secrets or tokens by default.",
 		Subcommands: []*cli.Command{
+			oauthAppCommand(appCtx),
 			oauthConnectCommand(appCtx),
 			oauthLoginURLCommand(appCtx),
 			oauthTokensCommand(appCtx),
+		},
+	}
+}
+
+func oauthAppCommand(appCtx *AppContext) *cli.Command {
+	return &cli.Command{
+		Name:  "app",
+		Usage: "Manage Daptin OAuth provider client apps",
+		Subcommands: []*cli.Command{
+			oauthAppRegisterCommand(appCtx),
+			oauthAppListCommand(appCtx),
+			oauthAppDescribeCommand(appCtx),
+			oauthAppRotateSecretCommand(appCtx),
+		},
+	}
+}
+
+func oauthAppRegisterCommand(appCtx *AppContext) *cli.Command {
+	return &cli.Command{
+		Name:      "register",
+		Usage:     "Register an OAuth client app for Daptin's OAuth provider",
+		ArgsUsage: "",
+		UsageText: `daptin oauth app register --name "App Login" --redirect-uri https://app.example.com/auth/daptin/callback --scope openid --scope profile --scope email`,
+		Flags: []cli.Flag{
+			&cli.StringFlag{Name: "name", Usage: "OAuth app display name"},
+			&cli.StringSliceFlag{Name: "redirect-uri", Usage: "Allowed redirect URI; repeat for multiple values"},
+			&cli.StringSliceFlag{Name: "scope", Usage: "Allowed scope; repeat or pass comma-separated values"},
+			&cli.StringSliceFlag{Name: "grant", Usage: "Allowed grant; repeat or pass comma-separated values"},
+			&cli.BoolFlag{Name: "confidential", Usage: "Register a confidential client (default)"},
+			&cli.BoolFlag{Name: "public", Usage: "Register a public client with no client secret"},
+		},
+		Action: func(c *cli.Context) error {
+			name := strings.TrimSpace(c.String("name"))
+			if name == "" {
+				return fmt.Errorf("--name is required")
+			}
+			if c.Bool("confidential") && c.Bool("public") {
+				return fmt.Errorf("--confidential and --public are mutually exclusive")
+			}
+			redirectURIs := c.StringSlice("redirect-uri")
+			if len(redirectURIs) == 0 {
+				return fmt.Errorf("--redirect-uri is required")
+			}
+
+			attrs := oauthAppRegisterAttrs(name, redirectURIs, c.StringSlice("scope"), c.StringSlice("grant"), !c.Bool("public"))
+			responses, err := appCtx.Client.Execute("register_client", "oauth_app", daptinClient.JsonApiObject(attrs))
+			if err != nil {
+				return err
+			}
+			return renderOAuthAppActionResponse(appCtx, responses, false)
+		},
+	}
+}
+
+func oauthAppListCommand(appCtx *AppContext) *cli.Command {
+	return &cli.Command{
+		Name:  "list",
+		Usage: "List OAuth provider client apps without secrets",
+		Action: func(c *cli.Context) error {
+			result, err := appCtx.Client.FindAll("oauth_app", daptinClient.DaptinQueryParameters{"page[size]": 100})
+			if err != nil {
+				return err
+			}
+			rows := client.MapArray(result, "attributes")
+			rows = render.FilterColumns(rows, []string{"name", "client_id", "redirect_uris", "scopes", "grants", "is_confidential", "is_enabled", "reference_id"})
+			if appCtx.Quiet {
+				return printRefs(rows)
+			}
+			return appCtx.Renderer.RenderArray(rows)
+		},
+	}
+}
+
+func oauthAppDescribeCommand(appCtx *AppContext) *cli.Command {
+	return &cli.Command{
+		Name:      "describe",
+		Usage:     "Describe one OAuth provider client app without secrets",
+		ArgsUsage: "<name-client-id-or-reference-id>",
+		Action: func(c *cli.Context) error {
+			app, err := oauthAppByNameClientOrRef(appCtx, c.Args().Get(0))
+			if err != nil {
+				return err
+			}
+			return renderSingleAPIObject(appCtx, app)
+		},
+	}
+}
+
+func oauthAppRotateSecretCommand(appCtx *AppContext) *cli.Command {
+	return &cli.Command{
+		Name:      "rotate-secret",
+		Usage:     "Rotate a confidential OAuth app client secret",
+		ArgsUsage: "<name-client-id-or-reference-id>",
+		Action: func(c *cli.Context) error {
+			app, err := oauthAppByNameClientOrRef(appCtx, c.Args().Get(0))
+			if err != nil {
+				return err
+			}
+			ref := refID(app)
+			if ref == "" {
+				return fmt.Errorf("oauth_app %q has no reference_id", c.Args().Get(0))
+			}
+			responses, err := appCtx.Client.Execute("rotate_client_secret", "oauth_app", daptinClient.JsonApiObject{
+				"oauth_app_id": ref,
+			})
+			if err != nil {
+				return err
+			}
+			return renderOAuthAppActionResponse(appCtx, responses, false)
 		},
 	}
 }
@@ -294,6 +404,84 @@ func redirectURLFromResponses(responses []daptinClient.DaptinActionResponse) str
 		}
 	}
 	return ""
+}
+
+func oauthAppRegisterAttrs(name string, redirectURIs, scopes, grants []string, confidential bool) map[string]interface{} {
+	attrs := map[string]interface{}{
+		"name":            name,
+		"redirect_uris":   oauthListString(redirectURIs, ""),
+		"scopes":          oauthListString(scopes, "openid profile email"),
+		"grants":          oauthListString(grants, "authorization_code refresh_token"),
+		"is_confidential": confidential,
+	}
+	return attrs
+}
+
+func oauthListString(values []string, defaultValue string) string {
+	parts := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.ReplaceAll(value, ",", " ")
+		for _, part := range strings.Fields(value) {
+			if part != "" {
+				parts = append(parts, part)
+			}
+		}
+	}
+	if len(parts) == 0 {
+		return defaultValue
+	}
+	return strings.Join(parts, " ")
+}
+
+func oauthAppByNameClientOrRef(appCtx *AppContext, nameClientOrRef string) (map[string]interface{}, error) {
+	if nameClientOrRef == "" {
+		return nil, fmt.Errorf("oauth app name, client_id, or reference_id required")
+	}
+	if strings.Contains(nameClientOrRef, "-") {
+		row, err := appCtx.Client.FindOne("oauth_app", nameClientOrRef, nil)
+		if err == nil {
+			return row, nil
+		}
+	}
+	if row, err := findOneByField(appCtx, "oauth_app", "client_id", nameClientOrRef); err == nil {
+		return row, nil
+	}
+	return findOneByName(appCtx, "oauth_app", nameClientOrRef)
+}
+
+func findOneByField(appCtx *AppContext, entityName, fieldName, value string) (map[string]interface{}, error) {
+	clauses, err := ParseFilter(fieldName + "=" + value)
+	if err != nil {
+		return nil, err
+	}
+	result, err := appCtx.Client.FindAll(entityName, daptinClient.DaptinQueryParameters{
+		"page[size]": 1,
+		"query":      FilterToJSON(clauses),
+	})
+	if err != nil {
+		return nil, err
+	}
+	if len(result) == 0 {
+		return nil, fmt.Errorf("%s with %s %q not found", entityName, fieldName, value)
+	}
+	return result[0], nil
+}
+
+func renderOAuthAppActionResponse(appCtx *AppContext, responses []daptinClient.DaptinActionResponse, redact bool) error {
+	for _, response := range responses {
+		if response.ResponseType != "oauth_app" {
+			continue
+		}
+		attrs := response.Attributes
+		if redact {
+			attrs = redactSecretColumns(attrs)
+		}
+		if appCtx.Quiet {
+			return printRef(attrs)
+		}
+		return appCtx.Renderer.RenderObject(attrs)
+	}
+	return applyEffects(ProcessResponses(responses), appCtx)
 }
 
 func openBrowser(url string) error {
