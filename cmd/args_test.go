@@ -45,6 +45,16 @@ func TestReorderArgs_GlobalFlagsPreserved(t *testing.T) {
 	}
 }
 
+func TestReorderArgs_GlobalOutputTableValue(t *testing.T) {
+	input := []string{"daptin", "--endpoint", "http://localhost:6336", "--output", "table", "list", "--columns", "table_name", "world"}
+	expected := []string{"daptin", "--endpoint", "http://localhost:6336", "--output", "table", "list", "--columns", "table_name", "world"}
+
+	result := ReorderArgs(input)
+	if !reflect.DeepEqual(result, expected) {
+		t.Errorf("expected %v, got %v", expected, result)
+	}
+}
+
 func TestReorderArgs_ExecuteWithReferenceId(t *testing.T) {
 	input := []string{"daptin", "execute", "oauth_connect", "oauth_login_begin", "--reference-id", "abc"}
 	expected := []string{"daptin", "execute", "--reference-id", "abc", "oauth_connect", "oauth_login_begin"}

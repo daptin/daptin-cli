@@ -207,9 +207,19 @@ func findCommandIndex(args []string) int {
 	for i := 1; i < len(args); i++ {
 		arg := args[i]
 		if strings.HasPrefix(arg, "-") {
-			// Skip global flag value if it uses space-separated syntax
-			if !strings.Contains(arg, "=") && i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") && knownCommands[args[i+1]] == false {
-				i++ // skip the value
+			if strings.Contains(arg, "=") || boolFlags[arg] {
+				continue
+			}
+			// Known value flags must consume their next value even when that
+			// value is also a command name, for example: --output table list.
+			if valueFlags[arg] {
+				if i+1 < len(args) {
+					i++
+				}
+				continue
+			}
+			if i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") && knownCommands[args[i+1]] == false {
+				i++
 			}
 			continue
 		}
