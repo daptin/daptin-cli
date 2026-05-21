@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"time"
 
 	"github.com/daptin/daptin-cli/client"
 	"github.com/daptin/daptin-cli/config"
@@ -62,6 +63,10 @@ func NewApp(cfg *config.Config, version string) *cli.App {
 
 			appCtx.Client = client.New(endpoint, authToken, c.Bool("debug"))
 			appCtx.Quiet = c.Bool("quiet")
+
+			if status, expiresAt := config.InspectTokenExpiry(authToken, time.Now()); status == config.TokenExpiryExpired {
+				fmt.Fprintf(os.Stderr, "Warning: saved auth token for context %q expired at %s; sign in again to refresh it.\n", contextName, expiresAt.Format(time.RFC3339))
+			}
 
 			if !appCtx.Quiet {
 				authed := ""
