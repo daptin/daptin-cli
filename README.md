@@ -161,6 +161,12 @@ daptin-cli delete document <reference_id>
 ```bash
 daptin-cli related <entity> <reference_id> <relation_column>
 daptin-cli related document <ref_id> user_account_id
+
+# Set attributes on the generated relationship row while relating
+daptin-cli relate world <document_world_ref> usergroup_id <users_group_ref> permission=1032192
+
+# Update attributes on an existing relationship row
+daptin-cli update-relation world <document_world_ref> usergroup_id <users_group_ref> permission=1032192
 ```
 
 ## Actions

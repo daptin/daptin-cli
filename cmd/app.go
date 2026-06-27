@@ -137,6 +137,7 @@ func NewApp(cfg *config.Config, version string) *cli.App {
 			deleteCommand(appCtx),
 			relatedCommand(appCtx),
 			relateCommand(appCtx),
+			updateRelationCommand(appCtx),
 			unrelateCommand(appCtx),
 			describeCommand(appCtx),
 			executeCommand(appCtx),

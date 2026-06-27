@@ -8,7 +8,8 @@ var knownCommands = map[string]bool{
 	"context": true, "list": true, "get": true, "create": true,
 	"update": true, "delete": true, "related": true, "describe": true,
 	"execute": true, "help": true, "relate": true, "unrelate": true,
-	"permission": true, "storage": true, "asset": true, "oauth": true,
+	"update-relation": true,
+	"permission":      true, "storage": true, "asset": true, "oauth": true,
 	"integration": true, "table": true,
 }
 
