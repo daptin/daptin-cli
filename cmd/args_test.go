@@ -95,6 +95,36 @@ func TestReorderArgs_NoFlags(t *testing.T) {
 	}
 }
 
+func TestReorderArgs_ConfigSetDashPrefixedValue(t *testing.T) {
+	input := []string{"daptin", "config", "set", "backend", "offset", "--value", "-1"}
+	expected := []string{"daptin", "config", "set", "--value", "-1", "backend", "offset"}
+
+	result := ReorderArgs(input)
+	if !reflect.DeepEqual(result, expected) {
+		t.Errorf("expected %v, got %v", expected, result)
+	}
+}
+
+func TestReorderArgs_ConfigSetDashPrefixedEqualsValue(t *testing.T) {
+	input := []string{"daptin", "config", "set", "backend", "offset", "--value=-1"}
+	expected := []string{"daptin", "config", "set", "--value=-1", "backend", "offset"}
+
+	result := ReorderArgs(input)
+	if !reflect.DeepEqual(result, expected) {
+		t.Errorf("expected %v, got %v", expected, result)
+	}
+}
+
+func TestReorderArgs_ConfigSetPEMPrefixedValue(t *testing.T) {
+	input := []string{"daptin", "config", "set", "backend", "tls.private_key", "--value", "-----BEGIN PRIVATE KEY-----"}
+	expected := []string{"daptin", "config", "set", "--value", "-----BEGIN PRIVATE KEY-----", "backend", "tls.private_key"}
+
+	result := ReorderArgs(input)
+	if !reflect.DeepEqual(result, expected) {
+		t.Errorf("expected %v, got %v", expected, result)
+	}
+}
+
 func TestReorderArgs_BoolFlag(t *testing.T) {
 	input := []string{"daptin", "execute", "user_account", "signin", "--interactive", "email=x"}
 	expected := []string{"daptin", "execute", "--interactive", "user_account", "signin", "email=x"}

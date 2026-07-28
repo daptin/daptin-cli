@@ -10,12 +10,13 @@ var knownCommands = map[string]bool{
 	"execute": true, "help": true, "relate": true, "unrelate": true,
 	"update-relation": true,
 	"permission":      true, "storage": true, "asset": true, "oauth": true,
-	"integration": true, "table": true,
+	"integration": true, "table": true, "config": true,
 }
 
 // Only commands that actually have subcommands, mapped to their subcommand names.
 var commandSubcommands = map[string]map[string]bool{
 	"context":    {"set": true, "add": true, "list": true},
+	"config":     {"get": true, "set": true},
 	"describe":   {"table": true, "action": true},
 	"permission": {"decode": true, "encode": true},
 	"table":      {"defaults": true},
@@ -82,6 +83,7 @@ var valueFlags = map[string]bool{
 	"--credential-id":                   true,
 	"--input-json":                      true,
 	"--input-file":                      true,
+	"--value":                           true,
 	"--name":                            true,
 	"--client-id":                       true,
 	"--client-secret":                   true,
@@ -189,6 +191,11 @@ func ReorderArgs(args []string) []string {
 func flagConsumesNextValue(arg string, commandArgs []string, index int) bool {
 	if strings.Contains(arg, "=") || index+1 >= len(commandArgs) {
 		return false
+	}
+	// --value is an explicit escape for arbitrary config values, including
+	// values whose first bytes look like another flag (for example PEM data).
+	if arg == "--value" {
+		return true
 	}
 	if boolFlags[arg] {
 		return false

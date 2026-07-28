@@ -152,6 +152,7 @@ func newApp(cfg *config.Config, version string, loadConfig bool) *cli.App {
 		},
 		Commands: []*cli.Command{
 			contextCommand(appCtx),
+			configCommand(appCtx),
 			listCommand(appCtx),
 			getCommand(appCtx),
 			createCommand(appCtx),
