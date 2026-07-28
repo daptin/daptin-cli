@@ -410,6 +410,31 @@ func TestFindActionMetadata_StringBool(t *testing.T) {
 	}
 }
 
+func TestBoolValueEncodings(t *testing.T) {
+	tests := []struct {
+		name  string
+		value interface{}
+		want  bool
+	}{
+		{name: "bool true", value: true, want: true},
+		{name: "bool false", value: false, want: false},
+		{name: "JSON numeric one", value: float64(1), want: true},
+		{name: "JSON numeric zero", value: float64(0), want: false},
+		{name: "string one", value: "1", want: true},
+		{name: "string zero", value: "0", want: false},
+		{name: "string true", value: "true", want: true},
+		{name: "string false", value: "false", want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := boolValue(tt.value); got != tt.want {
+				t.Fatalf("boolValue(%#v) = %v, want %v", tt.value, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestDecodeActionSchemaResponse_Valid(t *testing.T) {
 	// Base64 of: {"InFields":[{"ColumnName":"email","ColumnType":"email"}]}
 	schema := `{"InFields":[{"ColumnName":"email","ColumnType":"email"}]}`

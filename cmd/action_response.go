@@ -206,7 +206,19 @@ func boolValue(value interface{}) bool {
 	case bool:
 		return v
 	case string:
-		return strings.EqualFold(v, "true")
+		return strings.EqualFold(v, "true") || v == "1"
+	case float64:
+		return v == 1
+	case float32:
+		return v == 1
+	case int:
+		return v == 1
+	case int64:
+		return v == 1
+	case int32:
+		return v == 1
+	case json.Number:
+		return v == "1"
 	default:
 		return false
 	}

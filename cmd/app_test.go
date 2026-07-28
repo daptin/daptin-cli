@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -51,6 +52,59 @@ func TestNewApp_DoesNotWarnForValidSavedContextToken(t *testing.T) {
 
 	if strings.Contains(stderr, "saved auth token") {
 		t.Fatalf("did not expect expired token warning, got: %q", stderr)
+	}
+}
+
+func TestNewAppFromConfig_ExplicitConfigIsIsolated(t *testing.T) {
+	for _, flag := range []string{"--config", "-c"} {
+		t.Run(flag, func(t *testing.T) {
+			dir := t.TempDir()
+			defaultPath := filepath.Join(dir, "default.yaml")
+			customPath := filepath.Join(dir, "isolated", "config.yaml")
+			defaultContents := []byte("currentContext: prod\nhosts:\n- name: prod\n  endpoint: https://example.invalid\n  token: secret\n")
+			if err := os.WriteFile(defaultPath, defaultContents, 0600); err != nil {
+				t.Fatal(err)
+			}
+			t.Setenv("DAPTIN_CLI_CONFIG", defaultPath)
+
+			run := func(args ...string) string {
+				t.Helper()
+				var runErr error
+				stderr := captureStderr(t, func() {
+					runErr = NewAppFromConfig("test").Run(args)
+				})
+				if runErr != nil {
+					t.Fatalf("run %v: %v", args, runErr)
+				}
+				return stderr
+			}
+
+			run("daptin", "--quiet", flag, customPath, "context", "add", "isolated", "http://127.0.0.1:16336")
+			run("daptin", "--quiet", flag, customPath, "context", "set", "isolated")
+			stderr := run("daptin", flag, customPath, "context", "list")
+
+			gotDefault, err := os.ReadFile(defaultPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(gotDefault, defaultContents) {
+				t.Fatalf("default config was modified:\n%s", gotDefault)
+			}
+
+			isolated, err := config.Load(customPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if isolated.CurrentContext != "isolated" || len(isolated.Hosts) != 1 {
+				t.Fatalf("unexpected isolated config: %#v", isolated)
+			}
+			if isolated.Hosts[0].Endpoint != "http://127.0.0.1:16336" {
+				t.Fatalf("unexpected isolated endpoint: %q", isolated.Hosts[0].Endpoint)
+			}
+			if !strings.Contains(stderr, "Using isolated (http://127.0.0.1:16336)") || strings.Contains(stderr, "prod") {
+				t.Fatalf("context list did not use isolated config: %q", stderr)
+			}
+		})
 	}
 }
 

@@ -21,6 +21,18 @@ type AppContext struct {
 }
 
 func NewApp(cfg *config.Config, version string) *cli.App {
+	return newApp(cfg, version, false)
+}
+
+// NewAppFromConfig creates an app that loads its configuration after global
+// flags have been parsed. This ensures --config and -c select the file used by
+// every command, including commands that persist context changes.
+func NewAppFromConfig(version string) *cli.App {
+	cfg := &config.Config{}
+	return newApp(cfg, version, true)
+}
+
+func newApp(cfg *config.Config, version string, loadConfig bool) *cli.App {
 	appCtx := &AppContext{Config: cfg}
 
 	app := &cli.App{
@@ -43,6 +55,15 @@ func NewApp(cfg *config.Config, version string) *cli.App {
 		},
 		Before: func(c *cli.Context) error {
 			InitLogger(c.Bool("debug"))
+			if loadConfig {
+				cfgPath := c.String("config")
+				slog.Debug("resolved config path", "path", cfgPath)
+				loaded, err := config.Load(cfgPath)
+				if err != nil {
+					return fmt.Errorf("load config: %w", err)
+				}
+				*cfg = loaded
+			}
 
 			endpoint := c.String("endpoint")
 			authToken := ""
@@ -97,6 +118,7 @@ func NewApp(cfg *config.Config, version string) *cli.App {
 				Aliases:     []string{"c"},
 				Usage:       "Load configuration from `FILE`",
 				DefaultText: "~/.daptin/config.yaml",
+				Value:       config.ResolvePath(),
 				EnvVars:     []string{"DAPTIN_CLI_CONFIG"},
 			},
 			&cli.StringFlag{
