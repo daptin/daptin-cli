@@ -1,6 +1,86 @@
 package cmd
 
-import "testing"
+import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+
+	"github.com/daptin/daptin-cli/config"
+)
+
+func TestListCommandOutputContracts(t *testing.T) {
+	tests := []struct {
+		name       string
+		response   string
+		args       []string
+		wantOutput string
+		wantJSON   interface{}
+	}{
+		{
+			name:     "empty JSON is an array",
+			response: `{"data":[]}`,
+			args:     []string{"--output", "json"},
+			wantJSON: []interface{}{},
+		},
+		{
+			name:       "empty table retains a human-readable message",
+			response:   `{"data":[]}`,
+			wantOutput: "No data to print\n",
+		},
+		{
+			name:       "empty quiet output is silent",
+			response:   `{"data":[]}`,
+			args:       []string{"--quiet"},
+			wantOutput: "",
+		},
+		{
+			name:     "non-empty JSON remains an array of attributes",
+			response: `{"data":[{"id":"1","type":"document","attributes":{"document_name":"guide","reference_id":"ref-1"}}]}`,
+			args:     []string{"--output", "json"},
+			wantJSON: []interface{}{map[string]interface{}{"document_name": "guide", "reference_id": "ref-1"}},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path != "/api/document" {
+					t.Fatalf("unexpected path: %s", r.URL.Path)
+				}
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(tt.response))
+			}))
+			defer server.Close()
+
+			args := []string{"daptin", "--endpoint", server.URL}
+			args = append(args, tt.args...)
+			args = append(args, "list", "document")
+
+			var runErr error
+			stdout, _ := captureStdoutStderr(t, func() {
+				runErr = NewApp(&config.Config{}, "test").Run(args)
+			})
+			if runErr != nil {
+				t.Fatalf("run list: %v", runErr)
+			}
+
+			if tt.wantJSON != nil {
+				var got interface{}
+				if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+					t.Fatalf("output is not valid JSON: %v; output: %q", err, stdout)
+				}
+				want, _ := json.Marshal(tt.wantJSON)
+				gotJSON, _ := json.Marshal(got)
+				if string(gotJSON) != string(want) {
+					t.Fatalf("unexpected JSON: got %s, want %s", gotJSON, want)
+				}
+			} else if stdout != tt.wantOutput {
+				t.Fatalf("unexpected output: got %q, want %q", stdout, tt.wantOutput)
+			}
+		})
+	}
+}
 
 func TestParseAttributes_KeyVal(t *testing.T) {
 	args := []string{"name=alice", "email=a@b.com", "age=30"}

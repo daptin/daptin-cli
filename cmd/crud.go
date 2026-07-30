@@ -78,10 +78,6 @@ func listCommand(appCtx *AppContext) *cli.Command {
 			if err != nil {
 				return err
 			}
-			if len(result) == 0 {
-				fmt.Println("No rows found")
-				return nil
-			}
 
 			rows := client.MapArray(result, "attributes")
 			slog.Debug("list results", "count", len(rows))
