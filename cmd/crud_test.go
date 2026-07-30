@@ -1,9 +1,12 @@
 package cmd
 
 import (
+	"bytes"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 
 	"github.com/daptin/daptin-cli/config"
@@ -58,7 +61,7 @@ func TestListCommandOutputContracts(t *testing.T) {
 			args = append(args, "list", "document")
 
 			var runErr error
-			stdout, _ := captureStdoutStderr(t, func() {
+			stdout := captureCRUDStdout(t, func() {
 				runErr = NewApp(&config.Config{}, "test").Run(args)
 			})
 			if runErr != nil {
@@ -80,6 +83,32 @@ func TestListCommandOutputContracts(t *testing.T) {
 			}
 		})
 	}
+}
+
+func captureCRUDStdout(t *testing.T, fn func()) string {
+	t.Helper()
+
+	oldStdout := os.Stdout
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("pipe stdout: %v", err)
+	}
+	os.Stdout = writer
+	defer func() {
+		os.Stdout = oldStdout
+	}()
+
+	output := make(chan string, 1)
+	go func() {
+		var buf bytes.Buffer
+		_, _ = io.Copy(&buf, reader)
+		output <- buf.String()
+	}()
+
+	fn()
+	_ = writer.Close()
+	os.Stdout = oldStdout
+	return <-output
 }
 
 func TestParseAttributes_KeyVal(t *testing.T) {
