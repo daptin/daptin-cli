@@ -147,16 +147,9 @@ func createCommand(appCtx *AppContext) *cli.Command {
 			}
 			slog.Info("create", "entity", entityName)
 
-			attrs, err := parseAttributes(c.Args().Slice()[1:])
+			body, err := parseCreateBody(entityName, c.Args().Slice()[1:])
 			if err != nil {
 				return err
-			}
-
-			body := daptinClient.JsonApiObject{
-				"data": map[string]interface{}{
-					"type":       entityName,
-					"attributes": attrs,
-				},
 			}
 
 			result, err := appCtx.Client.Create(entityName, body)
@@ -174,6 +167,29 @@ func createCommand(appCtx *AppContext) *cli.Command {
 			return appCtx.Renderer.RenderObject(data)
 		},
 	}
+}
+
+func parseCreateBody(entityName string, args []string) (daptinClient.JsonApiObject, error) {
+	attrs, err := parseAttributes(args)
+	if err != nil {
+		return nil, err
+	}
+	if data, ok := attrs["data"].(map[string]interface{}); ok {
+		payloadType, _ := data["type"].(string)
+		if payloadType == "" {
+			return nil, fmt.Errorf("JSON:API create payload data.type is required")
+		}
+		if payloadType != entityName {
+			return nil, fmt.Errorf("JSON:API create payload type %q does not match entity %q", payloadType, entityName)
+		}
+		return daptinClient.JsonApiObject(attrs), nil
+	}
+	return daptinClient.JsonApiObject{
+		"data": map[string]interface{}{
+			"type":       entityName,
+			"attributes": attrs,
+		},
+	}, nil
 }
 
 func updateCommand(appCtx *AppContext) *cli.Command {
@@ -252,6 +268,10 @@ func relatedCommand(appCtx *AppContext) *cli.Command {
 				Name:  "columns",
 				Usage: "Comma-separated column names to show",
 			},
+			&cli.IntFlag{Name: "page-size", Usage: "Number of related rows per page", Value: 100},
+			&cli.IntFlag{Name: "page", Usage: "Page number", Value: 1},
+			&cli.BoolFlag{Name: "all", Usage: "Fetch all related rows using bounded pagination"},
+			&cli.IntFlag{Name: "max-pages", Usage: "Maximum pages allowed with --all", Value: 100},
 		},
 		Action: func(c *cli.Context) error {
 			entityName := c.Args().Get(0)
@@ -262,7 +282,23 @@ func relatedCommand(appCtx *AppContext) *cli.Command {
 			}
 			slog.Info("related", "entity", entityName, "reference_id", referenceId, "relation", relation)
 
-			result, err := appCtx.Client.FindRelated(entityName, referenceId, relation, nil)
+			pageSize := c.Int("page-size")
+			if pageSize <= 0 {
+				return fmt.Errorf("--page-size must be greater than zero")
+			}
+			var result []daptinClient.JsonApiObject
+			var err error
+			if c.Bool("all") {
+				result, err = findAllRelated(appCtx, entityName, referenceId, relation, pageSize, c.Int("max-pages"))
+			} else {
+				pageNumber := c.Int("page")
+				if pageNumber <= 0 {
+					return fmt.Errorf("--page must be greater than zero")
+				}
+				result, err = appCtx.Client.FindRelated(entityName, referenceId, relation, daptinClient.DaptinQueryParameters{
+					"page[size]": pageSize, "page[number]": pageNumber,
+				})
+			}
 			if err != nil {
 				return err
 			}
@@ -277,6 +313,47 @@ func relatedCommand(appCtx *AppContext) *cli.Command {
 			return appCtx.Renderer.RenderArray(rows)
 		},
 	}
+}
+
+func findAllRelated(appCtx *AppContext, entityName, referenceId, relation string, pageSize, maxPages int) ([]daptinClient.JsonApiObject, error) {
+	if maxPages <= 0 {
+		return nil, fmt.Errorf("--max-pages must be greater than zero")
+	}
+	var result []daptinClient.JsonApiObject
+	seen := make(map[string]bool)
+	for pageNumber := 1; pageNumber <= maxPages+1; pageNumber++ {
+		page, err := appCtx.Client.FindRelatedPage(entityName, referenceId, relation, daptinClient.DaptinQueryParameters{
+			"page[size]": pageSize, "page[number]": pageNumber,
+		})
+		if err != nil {
+			return nil, err
+		}
+		if pageNumber > maxPages {
+			if len(page.Rows) > 0 {
+				return nil, fmt.Errorf("related results exceed --max-pages=%d; no rows were printed", maxPages)
+			}
+			return result, nil
+		}
+		for _, row := range page.Rows {
+			attrs, _ := row["attributes"].(map[string]interface{})
+			identity, _ := attrs["reference_id"].(string)
+			if identity == "" {
+				identity, _ = row["id"].(string)
+			}
+			if identity == "" {
+				return nil, fmt.Errorf("malformed related page %d: row has no reference_id", pageNumber)
+			}
+			if seen[identity] {
+				return nil, fmt.Errorf("malformed related pagination: duplicate reference_id %q on page %d", identity, pageNumber)
+			}
+			seen[identity] = true
+			result = append(result, row)
+		}
+		if len(page.Rows) < pageSize {
+			return result, nil
+		}
+	}
+	return nil, fmt.Errorf("related pagination did not terminate")
 }
 
 // printRef outputs only the reference_id from a single row.

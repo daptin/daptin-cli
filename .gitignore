@@ -12,6 +12,9 @@ daptin-cli
 # Local config
 cfg.yaml
 
+# Local runtime state
+.claude/
+
 # OS
 .DS_Store
 Thumbs.db

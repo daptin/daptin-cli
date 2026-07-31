@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/daptin/daptin-cli/config"
 	"github.com/urfave/cli/v2"
@@ -56,21 +57,34 @@ func contextCommand(appCtx *AppContext) *cli.Command {
 						fmt.Println("No contexts configured")
 						return nil
 					}
+					now := time.Now()
 					for _, h := range appCtx.Config.Hosts {
 						marker := "  "
 						if h.Name == appCtx.Config.CurrentContext {
 							marker = "* "
 						}
-						hasToken := ""
-						if h.Token != "" {
-							hasToken = " (authenticated)"
-						}
+						authLabel := contextAuthLabel(h.Token, now)
 						slog.Debug("context entry", "name", h.Name, "endpoint", h.Endpoint, "token_present", h.Token != "")
-						fmt.Printf("%s%s  %s%s\n", marker, h.Name, h.Endpoint, hasToken)
+						fmt.Printf("%s%s  %s%s\n", marker, h.Name, h.Endpoint, authLabel)
 					}
 					return nil
 				},
 			},
 		},
 	}
+}
+
+func contextAuthLabel(token string, now time.Time) string {
+	if token == "" {
+		return ""
+	}
+
+	usable, status, _ := config.IsTokenUsable(token, now)
+	if status == config.TokenExpiryExpired {
+		return " (expired)"
+	}
+	if usable {
+		return " (authenticated)"
+	}
+	return ""
 }

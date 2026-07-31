@@ -53,3 +53,15 @@ func InspectTokenExpiry(token string, now time.Time) (TokenExpiryStatus, time.Ti
 	}
 	return TokenExpiryValid, expiresAt
 }
+
+func IsTokenUsable(token string, now time.Time) (bool, TokenExpiryStatus, time.Time) {
+	if token == "" {
+		return false, TokenExpiryNotInspectable, time.Time{}
+	}
+
+	status, expiresAt := InspectTokenExpiry(token, now)
+	if status == TokenExpiryExpired {
+		return false, status, expiresAt
+	}
+	return true, status, expiresAt
+}

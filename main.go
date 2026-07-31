@@ -1,7 +1,7 @@
 package main
 
 import (
-	"log"
+	"fmt"
 	"os"
 
 	"github.com/daptin/daptin-cli/cmd"
@@ -15,6 +15,13 @@ func main() {
 
 	app := cmd.NewAppFromConfig(version)
 	if err := app.Run(cmd.ReorderArgs(os.Args)); err != nil {
-		log.Fatal(err)
+		if err.Error() != "" {
+			fmt.Fprintln(os.Stderr, err)
+		}
+		exitCode := 1
+		if exitErr, ok := err.(interface{ ExitCode() int }); ok {
+			exitCode = exitErr.ExitCode()
+		}
+		os.Exit(exitCode)
 	}
 }

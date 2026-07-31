@@ -39,20 +39,6 @@ func newApp(cfg *config.Config, version string, loadConfig bool) *cli.App {
 		Name:    "daptin",
 		Usage:   "CLI client for Daptin API server",
 		Version: version,
-		ExitErrHandler: func(c *cli.Context, err error) {
-			if err == nil {
-				return
-			}
-			if exitErr, ok := err.(cli.ExitCoder); ok {
-				if err.Error() != "" {
-					fmt.Fprintln(os.Stderr, err)
-				}
-				cli.OsExiter(exitErr.ExitCode())
-				return
-			}
-			fmt.Fprintln(os.Stderr, err)
-			cli.OsExiter(1)
-		},
 		Before: func(c *cli.Context) error {
 			InitLogger(c.Bool("debug"))
 			if loadConfig {
@@ -82,12 +68,16 @@ func newApp(cfg *config.Config, version string, loadConfig bool) *cli.App {
 				}
 			}
 
-			appCtx.Client = client.New(endpoint, authToken, c.Bool("debug"))
-			appCtx.Quiet = c.Bool("quiet")
-
-			if status, expiresAt := config.InspectTokenExpiry(authToken, time.Now()); status == config.TokenExpiryExpired {
+			tokenUsable, status, expiresAt := config.IsTokenUsable(authToken, time.Now())
+			if status == config.TokenExpiryExpired {
 				fmt.Fprintf(os.Stderr, "Warning: saved auth token for context %q expired at %s; sign in again to refresh it.\n", contextName, expiresAt.Format(time.RFC3339))
 			}
+			if !tokenUsable {
+				authToken = ""
+			}
+
+			appCtx.Client = client.New(endpoint, authToken, c.Bool("debug"))
+			appCtx.Quiet = c.Bool("quiet")
 
 			if !appCtx.Quiet {
 				authed := ""
@@ -152,6 +142,8 @@ func newApp(cfg *config.Config, version string, loadConfig bool) *cli.App {
 		},
 		Commands: []*cli.Command{
 			contextCommand(appCtx),
+			healthCommand(appCtx),
+			statisticsCommand(appCtx),
 			configCommand(appCtx),
 			listCommand(appCtx),
 			getCommand(appCtx),

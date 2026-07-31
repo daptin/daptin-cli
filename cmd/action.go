@@ -49,10 +49,25 @@ func executeCommand(appCtx *AppContext) *cli.Command {
 				return err
 			}
 
+			var schema ActionSchema
+			schemaLoaded := false
+			loadSchema := func() (ActionSchema, error) {
+				if schemaLoaded {
+					return schema, nil
+				}
+				loaded, err := fetchActionSchemaFromServer(appCtx, entityName, actionName)
+				if err != nil {
+					return ActionSchema{}, err
+				}
+				schema = loaded
+				schemaLoaded = true
+				return schema, nil
+			}
+
 			// Interactive: fetch schema, compute missing fields, prompt at IO boundary
 			if c.Bool("interactive") {
 				slog.Debug("interactive mode enabled, fetching schema")
-				schema, schemaErr := fetchActionSchemaFromServer(appCtx, entityName, actionName)
+				schema, schemaErr := loadSchema()
 				if schemaErr == nil {
 					prompts := MissingFields(schema.InFields, attrs)
 					filled, err := promptUser(prompts)
@@ -65,12 +80,25 @@ func executeCommand(appCtx *AppContext) *cli.Command {
 				}
 			}
 
+			if hasActionFileReference(attrs) {
+				schema, err := loadSchema()
+				if err != nil {
+					return fmt.Errorf("inspect action schema for file fields: %w", err)
+				}
+				if err := materializeActionFileFields(schema.InFields, attrs); err != nil {
+					return err
+				}
+			}
+
 			if refId := c.String("reference-id"); refId != "" {
 				attrs[entityName+"_id"] = refId
 			}
 
 			responses, err := appCtx.Client.Execute(actionName, entityName, attrs)
 			if err != nil {
+				return err
+			}
+			if err := actionResponseError(responses); err != nil {
 				return err
 			}
 

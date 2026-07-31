@@ -34,6 +34,37 @@ func TestNewApp_WarnsForExpiredSavedContextToken(t *testing.T) {
 	}
 }
 
+func TestNewApp_DoesNotMarkExpiredSavedContextTokenAuthenticated(t *testing.T) {
+	cfg := &config.Config{
+		CurrentContext: "dev",
+		Hosts: []config.HostEndpoint{
+			{Name: "dev", Endpoint: "http://example.test", Token: appTestJWT(`{"exp":1}`)},
+		},
+	}
+	app := NewApp(cfg, "test")
+
+	var runErr error
+	stdout, stderr := captureStdoutStderr(t, func() {
+		runErr = app.Run([]string{"daptin", "context", "list"})
+	})
+	if runErr != nil {
+		t.Fatalf("unexpected error: %v", runErr)
+	}
+
+	if strings.Contains(stderr, "authenticated") {
+		t.Fatalf("expired token should not be reported authenticated on startup, got stderr: %q", stderr)
+	}
+	if !strings.Contains(stderr, "Using dev (http://example.test)") {
+		t.Fatalf("expected unauthenticated context banner, got stderr: %q", stderr)
+	}
+	if strings.Contains(stdout, "authenticated") {
+		t.Fatalf("expired token should not be reported authenticated in context list, got stdout: %q", stdout)
+	}
+	if !strings.Contains(stdout, "* dev  http://example.test (expired)") {
+		t.Fatalf("expected expired context label, got stdout: %q", stdout)
+	}
+}
+
 func TestNewApp_DoesNotWarnForValidSavedContextToken(t *testing.T) {
 	cfg := &config.Config{
 		CurrentContext: "dev",
@@ -111,28 +142,50 @@ func TestNewAppFromConfig_ExplicitConfigIsIsolated(t *testing.T) {
 func captureStderr(t *testing.T, fn func()) string {
 	t.Helper()
 
+	_, stderr := captureStdoutStderr(t, fn)
+	return stderr
+}
+
+func captureStdoutStderr(t *testing.T, fn func()) (string, string) {
+	t.Helper()
+
+	oldStdout := os.Stdout
 	oldStderr := os.Stderr
-	reader, writer, err := os.Pipe()
+	stdoutReader, stdoutWriter, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("pipe stdout: %v", err)
+	}
+	stderrReader, stderrWriter, err := os.Pipe()
 	if err != nil {
 		t.Fatalf("pipe stderr: %v", err)
 	}
-	os.Stderr = writer
+	os.Stdout = stdoutWriter
+	os.Stderr = stderrWriter
 	defer func() {
+		os.Stdout = oldStdout
 		os.Stderr = oldStderr
 	}()
 
-	output := make(chan string, 1)
+	stdoutOutput := make(chan string, 1)
 	go func() {
 		var buf bytes.Buffer
-		_, _ = io.Copy(&buf, reader)
-		output <- buf.String()
+		_, _ = io.Copy(&buf, stdoutReader)
+		stdoutOutput <- buf.String()
+	}()
+	stderrOutput := make(chan string, 1)
+	go func() {
+		var buf bytes.Buffer
+		_, _ = io.Copy(&buf, stderrReader)
+		stderrOutput <- buf.String()
 	}()
 
 	fn()
 
-	_ = writer.Close()
+	_ = stdoutWriter.Close()
+	_ = stderrWriter.Close()
+	os.Stdout = oldStdout
 	os.Stderr = oldStderr
-	return <-output
+	return <-stdoutOutput, <-stderrOutput
 }
 
 func appTestJWT(payload string) string {

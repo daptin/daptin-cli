@@ -6,6 +6,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	daptinClient "github.com/daptin/daptin-go-client"
 )
 
 func TestRelationshipJoinTableName(t *testing.T) {
@@ -19,6 +21,39 @@ func TestRelationshipJoinTableName(t *testing.T) {
 	want = "oauth_connect_oauth_connect_id_has_usergroup_usergroup_id"
 	if got != want {
 		t.Fatalf("expected %q, got %q", want, got)
+	}
+}
+
+func TestFindRelatedForwardsPagination(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("page[size]") != "100" || r.URL.Query().Get("page[number]") != "11" {
+			t.Fatalf("unexpected pagination query: %s", r.URL.RawQuery)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":[]}`))
+	}))
+	defer server.Close()
+
+	rows, err := New(server.URL, "", false).FindRelated("world", "world-ref", "usergroup_id", daptinClient.DaptinQueryParameters{
+		"page[size]": 100, "page[number]": 11,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(rows) != 0 {
+		t.Fatalf("expected empty page, got %d rows", len(rows))
+	}
+}
+
+func TestFindRelatedRejectsMalformedData(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"data":null}`))
+	}))
+	defer server.Close()
+
+	_, err := New(server.URL, "", false).FindRelated("world", "world-ref", "usergroup_id", nil)
+	if err == nil || !strings.Contains(err.Error(), "expected JSON:API data array") {
+		t.Fatalf("expected malformed response error, got %v", err)
 	}
 }
 

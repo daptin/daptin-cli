@@ -149,6 +149,9 @@ daptin-cli create document document_name=report.pdf document_extension=pdf
 # Create with JSON
 daptin-cli create document '{"document_name":"report.pdf","document_extension":"pdf"}'
 
+# Create with a complete JSON:API payload, including required relationships
+daptin-cli create mail_account '{"data":{"type":"mail_account","attributes":{"username":"probe@example.test"},"relationships":{"mail_server_id":{"data":{"type":"mail_server","id":"<mail_server_ref>"}}}}}'
+
 # Update
 daptin-cli update document <reference_id> document_name=updated.pdf
 
@@ -161,6 +164,10 @@ daptin-cli delete document <reference_id>
 ```bash
 daptin-cli related <entity> <reference_id> <relation_column>
 daptin-cli related document <ref_id> user_account_id
+
+# Select a page, or fetch every page with a hard safety bound
+daptin-cli related world <ref_id> usergroup_id --page-size 100 --page 2
+daptin-cli related world <ref_id> usergroup_id --all --page-size 100 --max-pages 100
 
 # Set attributes on the generated relationship row while relating
 daptin-cli relate world <document_world_ref> usergroup_id <users_group_ref> permission=1032192
@@ -206,7 +213,13 @@ daptin-cli execute cloud_store upload_file --reference-id <store_id> path=/uploa
 
 # Download system schema
 daptin-cli execute world download_system_schema
+
+# Upload a local file for an action field declared as file.*
+daptin-cli execute world upload_system_schema schema_file=@daptin/schema.yaml
 ```
+
+For action inputs whose type starts with `file.`, prefix the local path with `@`.
+The CLI serializes that value as the file array Daptin actions expect.
 
 ### Interactive mode
 
@@ -451,6 +464,18 @@ Use `asset` for `file.*` columns on normal entity rows. These commands use Dapti
 daptin-cli asset upload product <product_reference_id> photo ./image.jpg
 daptin-cli asset list product <product_reference_id> photo
 ```
+
+## Health And Statistics
+
+```bash
+daptin-cli --config context.yaml health
+daptin-cli --config context.yaml --output json statistics
+```
+
+`health` performs a minimal JSON:API readiness check. `statistics` requires an
+authenticated context, disables HTTP body debug logging, and refuses to print
+the entire response if it contains a secret-bearing field such as `cmdline`,
+credentials, tokens, passwords, or connection strings.
 
 ## Output
 

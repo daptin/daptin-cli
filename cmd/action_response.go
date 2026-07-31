@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"path/filepath"
 	"strings"
 
 	daptinClient "github.com/daptin/daptin-go-client"
@@ -68,6 +69,24 @@ func ProcessResponses(responses []daptinClient.DaptinActionResponse) []ResponseE
 	return effects
 }
 
+func actionResponseError(responses []daptinClient.DaptinActionResponse) error {
+	for _, response := range responses {
+		if response.ResponseType != "client.notify" {
+			continue
+		}
+		notificationType, _ := response.Attributes["type"].(string)
+		if !strings.EqualFold(notificationType, "error") {
+			continue
+		}
+		message, _ := response.Attributes["message"].(string)
+		if message == "" {
+			message = "action rejected"
+		}
+		return fmt.Errorf("%s", message)
+	}
+	return nil
+}
+
 func BuildActionSuccessEffect(entityName, actionName, referenceID string) ResponseEffect {
 	message := fmt.Sprintf("OK: %s.%s executed", entityName, actionName)
 	data := map[string]interface{}{
@@ -119,6 +138,62 @@ func MissingFields(inFields []map[string]interface{}, existing map[string]interf
 		})
 	}
 	return prompts
+}
+
+func hasActionFileReference(attrs map[string]interface{}) bool {
+	for _, value := range attrs {
+		if s, ok := value.(string); ok && strings.HasPrefix(s, "@") {
+			return true
+		}
+	}
+	return false
+}
+
+func materializeActionFileFields(inFields []map[string]interface{}, attrs map[string]interface{}) error {
+	fileFields := actionFileFieldNames(inFields)
+	for fieldName := range fileFields {
+		value, ok := attrs[fieldName]
+		if !ok {
+			continue
+		}
+		path, ok := actionFilePath(value)
+		if !ok {
+			continue
+		}
+		if path == "" {
+			return fmt.Errorf("file action field %q expects @path, got empty path", fieldName)
+		}
+		file, err := fileUploadObject(path, filepath.Base(path))
+		if err != nil {
+			return fmt.Errorf("read file action field %q from %q: %w", fieldName, path, err)
+		}
+		attrs[fieldName] = []map[string]interface{}{file}
+	}
+	return nil
+}
+
+func actionFileFieldNames(inFields []map[string]interface{}) map[string]bool {
+	fields := make(map[string]bool)
+	for _, field := range inFields {
+		colName, _ := field["ColumnName"].(string)
+		colType, _ := field["ColumnType"].(string)
+		if colName != "" && isActionFileColumnType(colType) {
+			fields[colName] = true
+		}
+	}
+	return fields
+}
+
+func isActionFileColumnType(columnType string) bool {
+	return strings.HasPrefix(strings.ToLower(columnType), "file.")
+}
+
+func actionFilePath(value interface{}) (string, bool) {
+	s, ok := value.(string)
+	if !ok || !strings.HasPrefix(s, "@") {
+		return "", false
+	}
+	return strings.TrimPrefix(s, "@"), true
 }
 
 // ParseActionSchema extracts InFields from a raw action_schema JSON string.

@@ -2,6 +2,9 @@ package cmd
 
 import (
 	"encoding/base64"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	daptinClient "github.com/daptin/daptin-go-client"
@@ -189,6 +192,30 @@ func TestProcessResponses_StoreSetNonToken(t *testing.T) {
 	}
 }
 
+func TestActionResponseError(t *testing.T) {
+	responses := []daptinClient.DaptinActionResponse{{
+		ResponseType: "client.notify",
+		Attributes: map[string]interface{}{
+			"type": "error", "message": "invalid credentials",
+		},
+	}}
+	if err := actionResponseError(responses); err == nil || err.Error() != "invalid credentials" {
+		t.Fatalf("expected action rejection, got %v", err)
+	}
+}
+
+func TestActionResponseErrorIgnoresSuccessNotification(t *testing.T) {
+	responses := []daptinClient.DaptinActionResponse{{
+		ResponseType: "client.notify",
+		Attributes: map[string]interface{}{
+			"type": "success", "message": "done",
+		},
+	}}
+	if err := actionResponseError(responses); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestBuildActionSuccessEffect(t *testing.T) {
 	effect := BuildActionSuccessEffect("integration", "install_integration", "ref-123")
 
@@ -277,6 +304,103 @@ func TestMissingFields_FallbackLabel(t *testing.T) {
 
 	if prompts[0].Label != "count" {
 		t.Errorf("expected count as fallback label, got %s", prompts[0].Label)
+	}
+}
+
+func TestHasActionFileReference(t *testing.T) {
+	if !hasActionFileReference(map[string]interface{}{"schema_file": "@schema.yaml"}) {
+		t.Fatal("expected @path value to be detected")
+	}
+	if hasActionFileReference(map[string]interface{}{"schema_file": []interface{}{map[string]interface{}{"name": "schema.yaml"}}}) {
+		t.Fatal("did not expect existing file array to be detected as @path")
+	}
+}
+
+func TestMaterializeActionFileFields_FileAtPath(t *testing.T) {
+	dir := t.TempDir()
+	localPath := filepath.Join(dir, "schema.yaml")
+	content := []byte("Tables: []\n")
+	if err := os.WriteFile(localPath, content, 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	attrs := map[string]interface{}{
+		"schema_file": "@" + localPath,
+		"title":       "@literal",
+	}
+	inFields := []map[string]interface{}{
+		{"ColumnName": "schema_file", "ColumnType": "file.json|yaml|toml|hcl"},
+		{"ColumnName": "title", "ColumnType": "label"},
+	}
+
+	if err := materializeActionFileFields(inFields, attrs); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	files, ok := attrs["schema_file"].([]map[string]interface{})
+	if !ok {
+		t.Fatalf("expected schema_file file array, got %#v", attrs["schema_file"])
+	}
+	if len(files) != 1 {
+		t.Fatalf("expected 1 file, got %d", len(files))
+	}
+	if files[0]["name"] != "schema.yaml" {
+		t.Fatalf("expected schema.yaml, got %#v", files[0]["name"])
+	}
+	if files[0]["type"] == "" {
+		t.Fatal("expected content type")
+	}
+
+	dataURI, ok := files[0]["file"].(string)
+	if !ok || !strings.HasPrefix(dataURI, "data:") {
+		t.Fatalf("expected data URI file payload, got %#v", files[0]["file"])
+	}
+	parts := strings.SplitN(dataURI, ",", 2)
+	if len(parts) != 2 {
+		t.Fatalf("expected comma-delimited data URI, got %q", dataURI)
+	}
+	decoded, err := base64.StdEncoding.DecodeString(parts[1])
+	if err != nil {
+		t.Fatalf("decode file payload: %v", err)
+	}
+	if string(decoded) != string(content) {
+		t.Fatalf("expected %q, got %q", content, decoded)
+	}
+	if attrs["title"] != "@literal" {
+		t.Fatalf("expected non-file @ value to be preserved, got %#v", attrs["title"])
+	}
+}
+
+func TestMaterializeActionFileFields_PreservesExistingFileArray(t *testing.T) {
+	existing := []interface{}{
+		map[string]interface{}{
+			"name": "schema.json",
+			"type": "application/json",
+			"file": "data:application/json;base64,e30=",
+		},
+	}
+	attrs := map[string]interface{}{"schema_file": existing}
+	inFields := []map[string]interface{}{
+		{"ColumnName": "schema_file", "ColumnType": "file.json|yaml|toml|hcl"},
+	}
+
+	if err := materializeActionFileFields(inFields, attrs); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got, ok := attrs["schema_file"].([]interface{}); !ok || len(got) != 1 {
+		t.Fatalf("expected existing file array to be preserved, got %#v", attrs["schema_file"])
+	}
+}
+
+func TestMaterializeActionFileFields_EmptyPath(t *testing.T) {
+	attrs := map[string]interface{}{"schema_file": "@"}
+	inFields := []map[string]interface{}{
+		{"ColumnName": "schema_file", "ColumnType": "file.json|yaml|toml|hcl"},
+	}
+
+	err := materializeActionFileFields(inFields, attrs)
+	if err == nil {
+		t.Fatal("expected empty path error")
 	}
 }
 

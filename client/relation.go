@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"strings"
 
 	daptinClient "github.com/daptin/daptin-go-client"
@@ -25,24 +26,37 @@ func RelationshipJoinTableName(entityName, relationColumn string) string {
 // FindRelated fetches related rows via a relationship column.
 // GET /api/{entity}/{referenceId}/{relationColumn}
 func (e *ExtendedClient) FindRelated(entityName, referenceId, relationColumn string, parameters daptinClient.DaptinQueryParameters) ([]daptinClient.JsonApiObject, error) {
+	page, err := e.FindRelatedPage(entityName, referenceId, relationColumn, parameters)
+	if err != nil {
+		return nil, err
+	}
+	return page.Rows, nil
+}
+
+type RelatedPage struct {
+	Rows []daptinClient.JsonApiObject
+	Meta map[string]interface{}
+}
+
+func (e *ExtendedClient) FindRelatedPage(entityName, referenceId, relationColumn string, parameters daptinClient.DaptinQueryParameters) (RelatedPage, error) {
 	req := e.nextRequest()
 
-	u := e.Endpoint + "/api/" + entityName + "/" + referenceId + "/" + relationColumn
+	u := buildRelatedURL(e.Endpoint, entityName, referenceId, relationColumn, parameters)
 	slog.Debug("FindRelated", "url", u)
 
 	resp, err := req.Get(u)
 	if err := e.checkResponse(resp, err); err != nil {
-		return nil, err
+		return RelatedPage{}, err
 	}
 
 	var responseObject map[string]interface{}
 	if err := json.Unmarshal(resp.Body(), &responseObject); err != nil {
-		return nil, fmt.Errorf("parse response: %w", err)
+		return RelatedPage{}, fmt.Errorf("parse related response: %w", err)
 	}
 
 	data, ok := responseObject["data"].([]interface{})
 	if !ok {
-		return nil, nil
+		return RelatedPage{}, fmt.Errorf("malformed related response: expected JSON:API data array")
 	}
 
 	result := make([]daptinClient.JsonApiObject, 0, len(data))
@@ -51,7 +65,20 @@ func (e *ExtendedClient) FindRelated(entityName, referenceId, relationColumn str
 			result = append(result, m)
 		}
 	}
-	return result, nil
+	meta, _ := responseObject["meta"].(map[string]interface{})
+	return RelatedPage{Rows: result, Meta: meta}, nil
+}
+
+func buildRelatedURL(endpoint, entityName, referenceId, relationColumn string, parameters daptinClient.DaptinQueryParameters) string {
+	u := endpoint + "/api/" + entityName + "/" + referenceId + "/" + relationColumn
+	if len(parameters) == 0 {
+		return u
+	}
+	query := url.Values{}
+	for key, value := range parameters {
+		query.Set(key, fmt.Sprintf("%v", value))
+	}
+	return u + "?" + query.Encode()
 }
 
 // AddRelation associates a target entity with a source via JSON:API relationships endpoint.
