@@ -45,6 +45,15 @@ expect() {
   fi
 }
 
+fails() {
+  local name="$1"; shift
+  if "$@" > /dev/null 2>&1; then
+    FAIL=$((FAIL+1)); printf "  FAIL  %s (expected nonzero exit)\n" "$name"
+  else
+    PASS=$((PASS+1)); printf "  PASS  %s\n" "$name"
+  fi
+}
+
 # Discover a world ref_id and table_name from whatever the server has
 WORLD_JSON=$(curl -s "$EP/api/world?page%5Bsize%5D=1" -H "Accept: application/json")
 REF=$(echo "$WORLD_JSON" | python3 -c "import json,sys; print(json.load(sys.stdin)['data'][0]['attributes']['reference_id'])")
@@ -83,7 +92,7 @@ expect "describe actions"    "Actions:"      "$CLI" --endpoint "$EP" describe ta
 
 echo ""
 echo "=== Execute ==="
-expect "signin bad creds"    "Notice"        "$CLI" --endpoint "$EP" execute user_account signin email=nobody@test.com password=wrong
+fails  "signin bad creds"                    "$CLI" --endpoint "$EP" execute user_account signin email=nobody@test.com password=wrong
 
 echo ""
 echo "=== Permission (#9) ==="

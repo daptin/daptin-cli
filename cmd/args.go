@@ -11,6 +11,7 @@ var knownCommands = map[string]bool{
 	"update-relation": true,
 	"permission":      true, "storage": true, "asset": true, "oauth": true,
 	"integration": true, "table": true, "config": true,
+	"mail": true,
 }
 
 // Only commands that actually have subcommands, mapped to their subcommand names.
@@ -35,6 +36,7 @@ var commandSubcommands = map[string]map[string]bool{
 		"validate-spec": true, "import": true, "install": true, "list": true,
 		"operations": true, "describe": true, "execute": true,
 	},
+	"mail": {"smtp-check": true, "smtp-delivery-check": true, "imap-check": true, "qualify": true},
 }
 
 var valueFlags = map[string]bool{
@@ -101,6 +103,26 @@ var valueFlags = map[string]bool{
 	"--pkce-challenge-method":           true,
 	"--permission":                      true,
 	"--group":                           true,
+	"--address":                         true,
+	"--smtp-address":                    true,
+	"--imap-address":                    true,
+	"--tls":                             true,
+	"--smtp-tls":                        true,
+	"--imap-tls":                        true,
+	"--server-name":                     true,
+	"--ca-file":                         true,
+	"--timeout":                         true,
+	"--username":                        true,
+	"--smtp-username":                   true,
+	"--imap-username":                   true,
+	"--from":                            true,
+	"--to":                              true,
+	"--folder":                          true,
+	"--correlation-id":                  true,
+	"--credential-file":                 true,
+	"--credentials-file":                true,
+	"--poll-timeout":                    true,
+	"--poll-interval":                   true,
 }
 
 var boolFlags = map[string]bool{
@@ -112,6 +134,7 @@ var boolFlags = map[string]bool{
 	"--restart":             true,
 	"--recursive":           true,
 	"--spec-stdin":          true,
+	"--input-stdin":         true,
 	"--validate":            true,
 	"--disable":             true,
 	"--update":              true,
@@ -123,6 +146,8 @@ var boolFlags = map[string]bool{
 	"--open":                true,
 	"--help":                true, "-h": true,
 	"--version": true, "-v": true,
+	"--credential-stdin": true, "--credentials-stdin": true,
+	"--dry-run": true, "--yes": true,
 }
 
 // ReorderArgs moves --flags that appear after positional args to before them,

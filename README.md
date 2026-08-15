@@ -152,12 +152,21 @@ daptin-cli create document '{"document_name":"report.pdf","document_extension":"
 # Create with a complete JSON:API payload, including required relationships
 daptin-cli create mail_account '{"data":{"type":"mail_account","attributes":{"username":"probe@example.test"},"relationships":{"mail_server_id":{"data":{"type":"mail_server","id":"<mail_server_ref>"}}}}}'
 
+# Read larger JSON payloads from a file or stdin
+daptin-cli create asset --input-file ./asset.json
+cat asset.json | daptin-cli create asset --input-stdin
+
 # Update
 daptin-cli update document <reference_id> document_name=updated.pdf
+daptin-cli update document <reference_id> --input-file ./attributes.json
 
 # Delete
 daptin-cli delete document <reference_id>
 ```
+
+`create` and `update` accept only one payload source at a time: positional
+arguments, `--input-file`, or `--input-stdin`. File and stdin JSON input is
+limited to 16 MiB.
 
 ### Traverse relationships
 
@@ -476,6 +485,77 @@ daptin-cli --config context.yaml --output json statistics
 authenticated context, disables HTTP body debug logging, and refuses to print
 the entire response if it contains a secret-bearing field such as `cmdline`,
 credentials, tokens, passwords, or connection strings.
+
+## SMTP And IMAP Qualification
+
+Mail commands connect directly to Daptin-owned SMTP and IMAP listeners. They
+require an explicitly selected config containing an active saved context and do
+not allow an `--endpoint` override. Listener checks do not authenticate or send
+mail:
+
+For normal-user delivery, configure Daptin's `mail`, `mail_account`, and
+`mail_box` table `AccessGroups` for the users group and keep new row permissions
+owner-scoped, as described in Daptin's Permissions wiki. SMTP and IMAP can be
+healthy while delivery still fails if the recipient cannot create a `mail` row
+or refer to its mailbox. Initial SMTP/IMAP listener changes require a Daptin
+restart.
+
+```bash
+daptin-cli --config ./staging.yaml --output json mail smtp-check \
+  --address mail.staging.example.com:465 --tls implicit \
+  --server-name mail.staging.example.com --ca-file ./mail-ca.pem
+
+daptin-cli --config ./staging.yaml --output json mail imap-check \
+  --address mail.staging.example.com:993 --tls implicit \
+  --server-name mail.staging.example.com --ca-file ./mail-ca.pem
+```
+
+`smtp-delivery-check` submits one fixed synthetic message. Its correlation ID
+becomes the RFC Message-ID used by `imap-check` to prove mailbox visibility:
+
+```bash
+printf '%s' "$SMTP_PASSWORD" | daptin-cli --config ./staging.yaml --output json \
+  mail smtp-delivery-check --address mail.staging.example.com:465 \
+  --tls implicit --server-name mail.staging.example.com --ca-file ./mail-ca.pem \
+  --username sender@staging.example.com --from sender@staging.example.com \
+  --to receiver@staging.example.com --correlation-id probe-123 \
+  --credential-stdin --yes
+
+printf '%s' "$IMAP_PASSWORD" | daptin-cli --config ./staging.yaml --output json \
+  mail imap-check --address mail.staging.example.com:993 --tls implicit \
+  --server-name mail.staging.example.com --ca-file ./mail-ca.pem \
+  --username receiver@staging.example.com --folder INBOX \
+  --correlation-id probe-123 --credential-stdin
+```
+
+The complete journey accepts two passwords through bounded JSON on stdin or a
+regular mode-0600 file:
+
+```json
+{"smtp_password":"sender-secret","imap_password":"recipient-secret"}
+```
+
+```bash
+daptin-cli --config ./staging.yaml --output json mail qualify \
+  --smtp-address mail.staging.example.com:465 --smtp-tls implicit \
+  --imap-address mail.staging.example.com:993 --imap-tls implicit \
+  --server-name mail.staging.example.com --ca-file ./mail-ca.pem \
+  --smtp-username sender@staging.example.com \
+  --imap-username receiver@staging.example.com \
+  --from sender@staging.example.com --to receiver@staging.example.com \
+  --folder INBOX --correlation-id probe-123 \
+  --credentials-file ./mail-qualification.json --yes
+```
+
+Use `--dry-run` with a delivery command to verify TCP and TLS without reading
+credentials, authenticating, or submitting a message. Mail output is a strict
+whitelist and never includes passwords, account identities, addresses,
+subjects, message bodies, UIDs, or raw protocol transcripts.
+
+The IMAP check first uses `UID SEARCH HEADER Message-ID`. For Daptin releases
+whose header search is broken, it falls back to fetching only the Message-ID
+header from at most the newest 100 messages reported by the selected mailbox.
+It never fetches a body or renders a UID.
 
 ## Output
 

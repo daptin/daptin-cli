@@ -14,10 +14,13 @@ import (
 
 // AppContext holds the shared dependencies for all commands.
 type AppContext struct {
-	Client   *client.ExtendedClient
-	Config   *config.Config
-	Renderer render.Renderer
-	Quiet    bool
+	Client           *client.ExtendedClient
+	Config           *config.Config
+	Renderer         render.Renderer
+	Quiet            bool
+	ConfigExplicit   bool
+	EndpointExplicit bool
+	ContextName      string
 }
 
 func NewApp(cfg *config.Config, version string) *cli.App {
@@ -52,6 +55,8 @@ func newApp(cfg *config.Config, version string, loadConfig bool) *cli.App {
 			}
 
 			endpoint := c.String("endpoint")
+			appCtx.ConfigExplicit = c.IsSet("config")
+			appCtx.EndpointExplicit = c.IsSet("endpoint")
 			authToken := ""
 			contextName := endpoint
 
@@ -67,6 +72,7 @@ func newApp(cfg *config.Config, version string, loadConfig bool) *cli.App {
 					slog.Debug("context resolution", "source", "saved_context", "context", contextName, "endpoint", endpoint, "token_present", authToken != "")
 				}
 			}
+			appCtx.ContextName = cfg.CurrentContext
 
 			tokenUsable, status, expiresAt := config.IsTokenUsable(authToken, time.Now())
 			if status == config.TokenExpiryExpired {
@@ -144,6 +150,7 @@ func newApp(cfg *config.Config, version string, loadConfig bool) *cli.App {
 			contextCommand(appCtx),
 			healthCommand(appCtx),
 			statisticsCommand(appCtx),
+			mailCommand(appCtx),
 			configCommand(appCtx),
 			listCommand(appCtx),
 			getCommand(appCtx),

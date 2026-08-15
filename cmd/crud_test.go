@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/daptin/daptin-cli/config"
@@ -181,5 +182,152 @@ func TestParseAttributes_ValueWithEquals(t *testing.T) {
 
 	if result["query"] != "name=alice" {
 		t.Errorf("expected name=alice, got %v", result["query"])
+	}
+}
+
+func TestReadBoundedJSONObject(t *testing.T) {
+	prefix := `{"value":"`
+	suffix := `"}`
+	padding := strings.Repeat("x", int(maxCRUDPayloadBytes)-len(prefix)-len(suffix))
+
+	result, err := readBoundedJSONObject(strings.NewReader(prefix + padding + suffix))
+	if err != nil {
+		t.Fatalf("read payload at limit: %v", err)
+	}
+	if len(result["value"].(string)) != len(padding) {
+		t.Fatalf("payload value was truncated")
+	}
+
+	_, err = readBoundedJSONObject(strings.NewReader(strings.Repeat("x", int(maxCRUDPayloadBytes)+1)))
+	if err == nil || !strings.Contains(err.Error(), "exceeds") {
+		t.Fatalf("expected oversized payload error, got %v", err)
+	}
+}
+
+func TestReadBoundedJSONObjectValidationIsSecretSafe(t *testing.T) {
+	_, err := readBoundedJSONObject(strings.NewReader(`{"password":"super-secret"`))
+	if err == nil || !strings.Contains(err.Error(), "invalid JSON payload") {
+		t.Fatalf("expected invalid JSON error, got %v", err)
+	}
+	if strings.Contains(err.Error(), "super-secret") {
+		t.Fatalf("error exposed payload contents: %v", err)
+	}
+
+	_, err = readBoundedJSONObject(strings.NewReader(`[1,2,3]`))
+	if err == nil || !strings.Contains(err.Error(), "must be an object") {
+		t.Fatalf("expected object validation error, got %v", err)
+	}
+}
+
+func TestReadCRUDPayloadSources(t *testing.T) {
+	path := t.TempDir() + "/payload.json"
+	if err := os.WriteFile(path, []byte(`{"name":"from-file"}`), 0600); err != nil {
+		t.Fatalf("write payload: %v", err)
+	}
+
+	fromFile, err := readCRUDPayload(nil, path, false, strings.NewReader(""))
+	if err != nil || fromFile["name"] != "from-file" {
+		t.Fatalf("unexpected file payload: %#v, %v", fromFile, err)
+	}
+	fromStdin, err := readCRUDPayload(nil, "", true, strings.NewReader(`{"name":"from-stdin"}`))
+	if err != nil || fromStdin["name"] != "from-stdin" {
+		t.Fatalf("unexpected stdin payload: %#v, %v", fromStdin, err)
+	}
+
+	conflicts := []struct {
+		args       []string
+		inputFile  string
+		inputStdin bool
+	}{
+		{args: []string{"name=positional"}, inputFile: path},
+		{args: []string{"name=positional"}, inputStdin: true},
+		{inputFile: path, inputStdin: true},
+	}
+	for _, conflict := range conflicts {
+		if _, err := readCRUDPayload(conflict.args, conflict.inputFile, conflict.inputStdin, strings.NewReader(`{}`)); err == nil {
+			t.Fatalf("expected ambiguous source error for %#v", conflict)
+		}
+	}
+}
+
+func TestCreateInputFilePreservesJSONAPIPayload(t *testing.T) {
+	payload := `{"data":{"type":"mail_account","attributes":{"username":"probe@example.invalid"},"relationships":{"mail_server_id":{"data":{"type":"mail_server","id":"server-ref"}}}}}`
+	path := t.TempDir() + "/payload.json"
+	if err := os.WriteFile(path, []byte(payload), 0600); err != nil {
+		t.Fatalf("write payload: %v", err)
+	}
+
+	var received map[string]interface{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&received); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		_, _ = w.Write([]byte(`{"data":{"type":"mail_account","id":"created","attributes":{"reference_id":"created"}}}`))
+	}))
+	defer server.Close()
+
+	err := NewApp(&config.Config{}, "test").Run([]string{"daptin", "--quiet", "--endpoint", server.URL, "create", "--input-file", path, "mail_account"})
+	if err != nil {
+		t.Fatalf("run create: %v", err)
+	}
+	data := received["data"].(map[string]interface{})
+	if _, ok := data["relationships"]; !ok {
+		t.Fatalf("relationships were not preserved: %#v", received)
+	}
+}
+
+func TestUpdateInputStdin(t *testing.T) {
+	var received map[string]interface{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&received); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		_, _ = w.Write([]byte(`{"data":{"type":"document","id":"doc-ref","attributes":{"reference_id":"doc-ref"}}}`))
+	}))
+	defer server.Close()
+
+	oldStdin := os.Stdin
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("pipe stdin: %v", err)
+	}
+	if _, err := writer.WriteString(`{"document_name":"updated.pdf"}`); err != nil {
+		t.Fatalf("write stdin: %v", err)
+	}
+	_ = writer.Close()
+	os.Stdin = reader
+	defer func() {
+		os.Stdin = oldStdin
+		_ = reader.Close()
+	}()
+
+	err = NewApp(&config.Config{}, "test").Run([]string{"daptin", "--quiet", "--endpoint", server.URL, "update", "--input-stdin", "document", "doc-ref"})
+	if err != nil {
+		t.Fatalf("run update: %v", err)
+	}
+	data := received["data"].(map[string]interface{})
+	attrs := data["attributes"].(map[string]interface{})
+	if attrs["document_name"] != "updated.pdf" || data["type"] != "document" || data["id"] != "doc-ref" {
+		t.Fatalf("unexpected update body: %#v", received)
+	}
+}
+
+func TestCreateRejectsAmbiguousInputBeforeRequest(t *testing.T) {
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+	}))
+	defer server.Close()
+
+	path := t.TempDir() + "/payload.json"
+	if err := os.WriteFile(path, []byte(`{"name":"file"}`), 0600); err != nil {
+		t.Fatalf("write payload: %v", err)
+	}
+	err := NewApp(&config.Config{}, "test").Run([]string{"daptin", "--endpoint", server.URL, "create", "--input-file", path, "document", "name=positional"})
+	if err == nil || !strings.Contains(err.Error(), "provide only one") {
+		t.Fatalf("expected ambiguous source error, got %v", err)
+	}
+	if requests != 0 {
+		t.Fatalf("validation failure made %d HTTP requests", requests)
 	}
 }

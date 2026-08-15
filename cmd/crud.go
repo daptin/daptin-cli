@@ -3,7 +3,9 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
+	"os"
 	"strings"
 
 	"github.com/daptin/daptin-cli/client"
@@ -11,6 +13,9 @@ import (
 	daptinClient "github.com/daptin/daptin-go-client"
 	"github.com/urfave/cli/v2"
 )
+
+// maxCRUDPayloadBytes bounds file and stdin payloads before JSON decoding.
+const maxCRUDPayloadBytes int64 = 16 << 20
 
 func listCommand(appCtx *AppContext) *cli.Command {
 	return &cli.Command{
@@ -140,6 +145,14 @@ func createCommand(appCtx *AppContext) *cli.Command {
 		Name:      "create",
 		Usage:     "Create a new row",
 		ArgsUsage: "<entity> [key=val ...] or <entity> <json>",
+		UsageText: `daptin create <entity> [key=val ...] [flags]
+   daptin create document '{"document_name":"report.pdf"}'
+   daptin create asset --input-file ./asset.json
+   cat asset.json | daptin create asset --input-stdin`,
+		Flags: []cli.Flag{
+			&cli.StringFlag{Name: "input-file", Usage: "Read a JSON payload from a file (maximum 16 MiB)"},
+			&cli.BoolFlag{Name: "input-stdin", Usage: "Read a JSON payload from stdin (maximum 16 MiB)"},
+		},
 		Action: func(c *cli.Context) error {
 			entityName := c.Args().Get(0)
 			if entityName == "" {
@@ -147,7 +160,11 @@ func createCommand(appCtx *AppContext) *cli.Command {
 			}
 			slog.Info("create", "entity", entityName)
 
-			body, err := parseCreateBody(entityName, c.Args().Slice()[1:])
+			attrs, err := readCRUDPayload(c.Args().Slice()[1:], c.String("input-file"), c.Bool("input-stdin"), os.Stdin)
+			if err != nil {
+				return err
+			}
+			body, err := createBodyFromAttributes(entityName, attrs)
 			if err != nil {
 				return err
 			}
@@ -174,6 +191,10 @@ func parseCreateBody(entityName string, args []string) (daptinClient.JsonApiObje
 	if err != nil {
 		return nil, err
 	}
+	return createBodyFromAttributes(entityName, attrs)
+}
+
+func createBodyFromAttributes(entityName string, attrs map[string]interface{}) (daptinClient.JsonApiObject, error) {
 	if data, ok := attrs["data"].(map[string]interface{}); ok {
 		payloadType, _ := data["type"].(string)
 		if payloadType == "" {
@@ -197,6 +218,14 @@ func updateCommand(appCtx *AppContext) *cli.Command {
 		Name:      "update",
 		Usage:     "Update a row",
 		ArgsUsage: "<entity> <reference_id> [key=val ...] or <entity> <reference_id> <json>",
+		UsageText: `daptin update <entity> <reference_id> [key=val ...] [flags]
+   daptin update document <reference_id> '{"document_name":"updated.pdf"}'
+   daptin update document <reference_id> --input-file ./attributes.json
+   cat attributes.json | daptin update document <reference_id> --input-stdin`,
+		Flags: []cli.Flag{
+			&cli.StringFlag{Name: "input-file", Usage: "Read a JSON attributes object from a file (maximum 16 MiB)"},
+			&cli.BoolFlag{Name: "input-stdin", Usage: "Read a JSON attributes object from stdin (maximum 16 MiB)"},
+		},
 		Action: func(c *cli.Context) error {
 			entityName := c.Args().Get(0)
 			referenceId := c.Args().Get(1)
@@ -205,7 +234,7 @@ func updateCommand(appCtx *AppContext) *cli.Command {
 			}
 			slog.Info("update", "entity", entityName, "reference_id", referenceId)
 
-			attrs, err := parseAttributes(c.Args().Slice()[2:])
+			attrs, err := readCRUDPayload(c.Args().Slice()[2:], c.String("input-file"), c.Bool("input-stdin"), os.Stdin)
 			if err != nil {
 				return err
 			}
@@ -233,6 +262,55 @@ func updateCommand(appCtx *AppContext) *cli.Command {
 			return appCtx.Renderer.RenderObject(data)
 		},
 	}
+}
+
+func readCRUDPayload(args []string, inputFile string, inputStdin bool, stdin io.Reader) (map[string]interface{}, error) {
+	sources := 0
+	if len(args) > 0 {
+		sources++
+	}
+	if inputFile != "" {
+		sources++
+	}
+	if inputStdin {
+		sources++
+	}
+	if sources > 1 {
+		return nil, fmt.Errorf("provide only one of positional payload, --input-file, or --input-stdin")
+	}
+
+	if inputFile != "" {
+		file, err := os.Open(inputFile)
+		if err != nil {
+			return nil, fmt.Errorf("open input file: %w", err)
+		}
+		defer file.Close()
+		return readBoundedJSONObject(file)
+	}
+	if inputStdin {
+		return readBoundedJSONObject(stdin)
+	}
+	return parseAttributes(args)
+}
+
+func readBoundedJSONObject(reader io.Reader) (map[string]interface{}, error) {
+	data, err := io.ReadAll(io.LimitReader(reader, maxCRUDPayloadBytes+1))
+	if err != nil {
+		return nil, fmt.Errorf("read JSON payload: %w", err)
+	}
+	if int64(len(data)) > maxCRUDPayloadBytes {
+		return nil, fmt.Errorf("JSON payload exceeds %d-byte limit", maxCRUDPayloadBytes)
+	}
+
+	var decoded interface{}
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return nil, fmt.Errorf("invalid JSON payload")
+	}
+	result, ok := decoded.(map[string]interface{})
+	if !ok {
+		return nil, fmt.Errorf("JSON payload must be an object")
+	}
+	return result, nil
 }
 
 func deleteCommand(appCtx *AppContext) *cli.Command {

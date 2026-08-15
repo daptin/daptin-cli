@@ -185,6 +185,14 @@ func TestReorderArgs_OAuthAppRegister(t *testing.T) {
 	}
 }
 
+func TestReorderArgs_MailQualificationFlags(t *testing.T) {
+	input := []string{"daptin", "mail", "qualify", "--smtp-address", "mail.test:465", "--yes", "--correlation-id", "probe-1"}
+	expected := input
+	if result := ReorderArgs(input); !reflect.DeepEqual(result, expected) {
+		t.Fatalf("expected %v, got %v", expected, result)
+	}
+}
+
 func TestReorderArgs_IntegrationExecute(t *testing.T) {
 	input := []string{"daptin", "integration", "execute", "asana.com", "getWorkspaces", "--oauth-token-id", "tok", "workspace=abc"}
 	expected := []string{"daptin", "integration", "execute", "--oauth-token-id", "tok", "asana.com", "getWorkspaces", "workspace=abc"}
@@ -202,6 +210,27 @@ func TestReorderArgs_EqualsFlag(t *testing.T) {
 	result := ReorderArgs(input)
 	if !reflect.DeepEqual(result, expected) {
 		t.Errorf("expected %v, got %v", expected, result)
+	}
+}
+
+func TestReorderArgs_CRUDInputFlags(t *testing.T) {
+	tests := []struct {
+		input    []string
+		expected []string
+	}{
+		{
+			input:    []string{"daptin", "create", "asset", "--input-file", "asset.json"},
+			expected: []string{"daptin", "create", "--input-file", "asset.json", "asset"},
+		},
+		{
+			input:    []string{"daptin", "update", "document", "doc-ref", "--input-stdin"},
+			expected: []string{"daptin", "update", "--input-stdin", "document", "doc-ref"},
+		},
+	}
+	for _, tt := range tests {
+		if result := ReorderArgs(tt.input); !reflect.DeepEqual(result, tt.expected) {
+			t.Fatalf("expected %v, got %v", tt.expected, result)
+		}
 	}
 }
 

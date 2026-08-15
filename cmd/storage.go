@@ -330,8 +330,10 @@ func assetUploadCommand(appCtx *AppContext) *cli.Command {
 			if err != nil {
 				return err
 			}
-			uploadID, _ := upload["upload_id"].(string)
-			complete, err := appCtx.Client.CompleteAssetUpload(entityName, referenceID, columnName, filename, uploadID, contentType, info.Size())
+			if _, ok := upload["upload_id"].(string); !ok {
+				return fmt.Errorf("asset stream response did not contain an upload_id")
+			}
+			complete, err := appCtx.Client.CompleteAssetUpload(entityName, referenceID, columnName, filename, contentType, info.Size())
 			if err != nil {
 				return err
 			}
