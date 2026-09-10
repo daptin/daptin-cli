@@ -1,8 +1,11 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/daptin/daptin-cli/cmd"
 )
@@ -14,7 +17,9 @@ func main() {
 	cmd.InitLogger(false)
 
 	app := cmd.NewAppFromConfig(version)
-	if err := app.Run(cmd.ReorderArgs(os.Args)); err != nil {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	if err := app.RunContext(ctx, cmd.ReorderArgs(os.Args)); err != nil {
 		if err.Error() != "" {
 			fmt.Fprintln(os.Stderr, err)
 		}

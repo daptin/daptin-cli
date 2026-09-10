@@ -11,7 +11,7 @@ var knownCommands = map[string]bool{
 	"update-relation": true,
 	"permission":      true, "storage": true, "asset": true, "oauth": true,
 	"integration": true, "table": true, "config": true,
-	"mail": true,
+	"mail": true, "llm": true,
 }
 
 // Only commands that actually have subcommands, mapped to their subcommand names.
@@ -37,6 +37,7 @@ var commandSubcommands = map[string]map[string]bool{
 		"operations": true, "describe": true, "execute": true,
 	},
 	"mail": {"smtp-check": true, "smtp-delivery-check": true, "imap-check": true, "qualify": true},
+	"llm":  {"models": true, "chat": true, "responses": true, "embeddings": true},
 }
 
 var valueFlags = map[string]bool{
@@ -86,6 +87,9 @@ var valueFlags = map[string]bool{
 	"--credential-id":                   true,
 	"--input-json":                      true,
 	"--input-file":                      true,
+	"--model":                           true,
+	"--prompt":                          true,
+	"--input":                           true,
 	"--value":                           true,
 	"--name":                            true,
 	"--client-id":                       true,
@@ -148,6 +152,7 @@ var boolFlags = map[string]bool{
 	"--version": true, "-v": true,
 	"--credential-stdin": true, "--credentials-stdin": true,
 	"--dry-run": true, "--yes": true,
+	"--stream": true,
 }
 
 // ReorderArgs moves --flags that appear after positional args to before them,

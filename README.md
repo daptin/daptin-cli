@@ -15,6 +15,7 @@ daptin-cli execute --help
 daptin-cli describe action --help
 daptin-cli oauth --help
 daptin-cli integration --help
+daptin-cli llm --help
 daptin-cli storage --help
 daptin-cli asset --help
 ```
@@ -426,6 +427,49 @@ daptin-cli integration execute grpc.example Search \
 ```
 
 `integration operations` and `integration describe` require Daptin versions with scoped discovery endpoints: `GET /integration/:provider/operations` and `GET /integration/:provider/operations/:operation`.
+
+## LLM Gateway
+
+Call Daptin's OpenAI-compatible gateway using the endpoint and bearer token in
+the active CLI context. These commands call Daptin only; they do not accept
+upstream provider URLs or provider API keys.
+
+```bash
+# Models the active account is allowed to execute
+daptin-cli llm models
+
+# Simple inputs
+daptin-cli llm chat --model assistant --prompt "Hello"
+daptin-cli llm responses --model assistant --input "Hello"
+daptin-cli llm embeddings --model embedding-model --input "Hello"
+
+# Complete request objects (maximum 16 MiB)
+daptin-cli llm chat --model assistant --input-file request.json
+cat request.json | daptin-cli llm responses --input-stdin
+daptin-cli llm embeddings --input-json '{"model":"embedding-model","input":["one","two"]}'
+
+# Streaming chat and Responses
+daptin-cli llm chat --model assistant --prompt "Hello" --stream
+daptin-cli llm responses --model assistant --input "Hello" --stream
+```
+
+`--input-json`, `--input-file`, and `--input-stdin` are mutually exclusive and
+must contain a complete JSON object. `--model` may add a missing model to that
+object, but a conflicting model is rejected. A request containing
+`"stream":true` is streamed even without `--stream`.
+
+With `--output json`, non-streaming responses are copied from the gateway
+without reformatting. Streaming JSON output is JSON Lines: one canonical SSE
+data object per line. Human chat and Responses output prints primary generated
+text; human embeddings output summarizes vector indices and dimensions, so use
+JSON output when consuming vectors in a script.
+
+Model execute permission and metering are independent gates. An account can be
+allowed to execute a model and still be denied by a plan quota. Quota denial is
+reported as `402 insufficient_quota`; deployment/provider rate protection is
+reported separately as `429 rate_limit_error`. Streaming failures carry these
+codes inside SSE even though the stream's HTTP status has already been committed
+as 200, and the CLI still exits non-zero.
 
 ## Storage
 

@@ -285,3 +285,13 @@ func TestReorderArgs_Empty(t *testing.T) {
 		t.Errorf("expected %v, got %v", expected, result)
 	}
 }
+
+func TestReorderArgs_LLMFlagsAfterSubcommandArguments(t *testing.T) {
+	input := []string{"daptin", "llm", "chat", "hello-positional", "--model", "assistant", "--prompt", "-brief", "--stream"}
+	expected := []string{"daptin", "llm", "chat", "--model", "assistant", "--prompt", "-brief", "--stream", "hello-positional"}
+
+	result := ReorderArgs(input)
+	if !reflect.DeepEqual(result, expected) {
+		t.Errorf("expected %v, got %v", expected, result)
+	}
+}

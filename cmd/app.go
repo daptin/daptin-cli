@@ -165,6 +165,7 @@ func newApp(cfg *config.Config, version string, loadConfig bool) *cli.App {
 			executeCommand(appCtx),
 			oauthCommand(appCtx),
 			integrationCommand(appCtx),
+			llmCommand(appCtx),
 			storageCommand(appCtx),
 			assetCommand(appCtx),
 			permissionCommand(appCtx),
