@@ -14,8 +14,8 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
-// maxCRUDPayloadBytes bounds file and stdin payloads before JSON decoding.
-const maxCRUDPayloadBytes int64 = 16 << 20
+// maxJSONPayloadBytes bounds JSON payloads before decoding.
+const maxJSONPayloadBytes int64 = 16 << 20
 
 func listCommand(appCtx *AppContext) *cli.Command {
 	return &cli.Command{
@@ -294,12 +294,12 @@ func readCRUDPayload(args []string, inputFile string, inputStdin bool, stdin io.
 }
 
 func readBoundedJSONObject(reader io.Reader) (map[string]interface{}, error) {
-	data, err := io.ReadAll(io.LimitReader(reader, maxCRUDPayloadBytes+1))
+	data, err := io.ReadAll(io.LimitReader(reader, maxJSONPayloadBytes+1))
 	if err != nil {
 		return nil, fmt.Errorf("read JSON payload: %w", err)
 	}
-	if int64(len(data)) > maxCRUDPayloadBytes {
-		return nil, fmt.Errorf("JSON payload exceeds %d-byte limit", maxCRUDPayloadBytes)
+	if int64(len(data)) > maxJSONPayloadBytes {
+		return nil, fmt.Errorf("JSON payload exceeds %d-byte limit", maxJSONPayloadBytes)
 	}
 
 	var decoded interface{}

@@ -234,6 +234,31 @@ func TestReorderArgs_CRUDInputFlags(t *testing.T) {
 	}
 }
 
+func TestReorderArgs_ExecuteInputFlags(t *testing.T) {
+	tests := []struct {
+		input    []string
+		expected []string
+	}{
+		{
+			input:    []string{"daptin", "execute", "world", "my_action", "--input-json", `{"key":"value"}`},
+			expected: []string{"daptin", "execute", "--input-json", `{"key":"value"}`, "world", "my_action"},
+		},
+		{
+			input:    []string{"daptin", "execute", "world", "my_action", "--input-file", "request.json"},
+			expected: []string{"daptin", "execute", "--input-file", "request.json", "world", "my_action"},
+		},
+		{
+			input:    []string{"daptin", "execute", "world", "my_action", "--input-stdin"},
+			expected: []string{"daptin", "execute", "--input-stdin", "world", "my_action"},
+		},
+	}
+	for _, tt := range tests {
+		if result := ReorderArgs(tt.input); !reflect.DeepEqual(result, tt.expected) {
+			t.Fatalf("expected %v, got %v", tt.expected, result)
+		}
+	}
+}
+
 func TestReorderArgs_GlobalDebugFlag(t *testing.T) {
 	input := []string{"daptin", "--debug", "list", "world", "--columns", "table_name"}
 	expected := []string{"daptin", "--debug", "list", "--columns", "table_name", "world"}

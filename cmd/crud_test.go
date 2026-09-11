@@ -188,7 +188,7 @@ func TestParseAttributes_ValueWithEquals(t *testing.T) {
 func TestReadBoundedJSONObject(t *testing.T) {
 	prefix := `{"value":"`
 	suffix := `"}`
-	padding := strings.Repeat("x", int(maxCRUDPayloadBytes)-len(prefix)-len(suffix))
+	padding := strings.Repeat("x", int(maxJSONPayloadBytes)-len(prefix)-len(suffix))
 
 	result, err := readBoundedJSONObject(strings.NewReader(prefix + padding + suffix))
 	if err != nil {
@@ -198,7 +198,7 @@ func TestReadBoundedJSONObject(t *testing.T) {
 		t.Fatalf("payload value was truncated")
 	}
 
-	_, err = readBoundedJSONObject(strings.NewReader(strings.Repeat("x", int(maxCRUDPayloadBytes)+1)))
+	_, err = readBoundedJSONObject(strings.NewReader(strings.Repeat("x", int(maxJSONPayloadBytes)+1)))
 	if err == nil || !strings.Contains(err.Error(), "exceeds") {
 		t.Fatalf("expected oversized payload error, got %v", err)
 	}

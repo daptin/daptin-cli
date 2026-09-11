@@ -194,6 +194,21 @@ All Daptin actions — built-in or custom — can be executed with `execute`.
 daptin-cli execute <entity> <action_name> [key=val ...]
 ```
 
+For nested or generated action attributes, pass one bounded JSON object directly,
+from a file, or from stdin:
+
+```bash
+daptin-cli execute world my_action --input-json '{"options":{"mode":"safe"},"items":["one","two"]}'
+daptin-cli execute world my_action --input-file ./request.json
+cat request.json | daptin-cli execute world my_action --input-stdin
+```
+
+The JSON object contains the action attributes themselves; do not wrap it in an
+HTTP `{"attributes": ...}` envelope. Positional arguments, `--input-json`,
+`--input-file`, and `--input-stdin` are mutually exclusive. JSON flag, file, and
+stdin input is limited to 16 MiB. `--input-stdin` cannot be combined with
+`--interactive`, because both modes need stdin.
+
 ### Authentication
 
 ```bash
@@ -256,6 +271,61 @@ Use `describe action` when you are unsure:
 ```bash
 daptin-cli describe action cloud_store upload_file
 ```
+
+### Payment checkout actions
+
+Daptin payment checkout is an application-defined action workflow, not a
+provider-specific CLI subsystem. The commands below work only after the
+application has installed compatible `api_plan`, `checkout_attempt`, and
+checkout action definitions, such as Daptin's
+[payment checkout example](https://github.com/daptin/daptin/tree/master/examples/payment-checkout).
+
+List plans that remain available for new checkout attempts:
+
+```bash
+daptin-cli --output json list api_plan \
+  --filter 'archived_at is empty' \
+  --columns name,price_monthly_cents,currency,reference_id
+```
+
+Prepare an owned attempt and capture its server-returned reference:
+
+```bash
+ATTEMPT_ID=$(
+  daptin-cli --output json execute api_plan prepare_checkout \
+    --reference-id "$PLAN_REFERENCE_ID" |
+  jq -r '.checkout_attempt_id'
+)
+```
+
+Ask Daptin to create or recover the provider session, then use only the URL
+returned by the action for browser navigation:
+
+```bash
+CHECKOUT_URL=$(
+  daptin-cli --output json execute checkout_attempt begin_checkout \
+    --reference-id "$ATTEMPT_ID" |
+  jq -r '.checkout_url'
+)
+printf '%s\n' "$CHECKOUT_URL"
+```
+
+After the provider returns, have Daptin retrieve and verify provider state, then
+read the durable attempt:
+
+```bash
+daptin-cli --output json execute checkout_attempt refresh_checkout \
+  --reference-id "$ATTEMPT_ID"
+daptin-cli --output json get checkout_attempt "$ATTEMPT_ID"
+```
+
+The CLI never accepts the provider secret, treats redirect parameters as proof
+of payment, verifies payment locally, or creates `api_member` directly. Those
+permission, credential, idempotency, verification, and transaction boundaries
+remain owned by the installed Daptin actions. A denied action returns non-zero;
+there is no provider or membership fallback. See the full
+[Payments and Checkout guide](https://github.com/daptin/daptin/wiki/Payments-and-Checkout)
+for the server-side contract and production considerations.
 
 ## Describe
 

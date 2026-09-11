@@ -3,6 +3,7 @@ package cmd
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"strings"
@@ -22,10 +23,25 @@ func executeCommand(appCtx *AppContext) *cli.Command {
 		ArgsUsage: "<entity> <action_name> [key=val ...]",
 		UsageText: `daptin execute <entity> <action_name> [key=val ...]
    daptin execute user_account signin email=admin@example.com password=secret
+   daptin execute world my_action --input-json '{"key":"value"}'
+   daptin execute world my_action --input-file request.json
+   cat request.json | daptin execute world my_action --input-stdin
    daptin execute integration install_integration --reference-id <integration_reference_id>
    daptin execute user_account signin --interactive`,
 		Description: "Use describe action first when you need to know whether an action requires --reference-id or which fields it accepts.",
 		Flags: []cli.Flag{
+			&cli.StringFlag{
+				Name:  "input-json",
+				Usage: "Action attributes as a JSON object (maximum 16 MiB)",
+			},
+			&cli.StringFlag{
+				Name:  "input-file",
+				Usage: "Read action attributes as a JSON object from `FILE` (maximum 16 MiB)",
+			},
+			&cli.BoolFlag{
+				Name:  "input-stdin",
+				Usage: "Read action attributes as a JSON object from stdin (maximum 16 MiB)",
+			},
 			&cli.StringFlag{
 				Name:  "reference-id",
 				Usage: "Entity instance reference_id (for non-optional instance actions)",
@@ -43,7 +59,14 @@ func executeCommand(appCtx *AppContext) *cli.Command {
 			}
 			slog.Info("execute", "entity", entityName, "action", actionName)
 
-			attrs, err := parseAttributes(c.Args().Slice()[2:])
+			attrs, err := readActionPayload(c.Args().Slice()[2:], actionInputOptions{
+				inputJSON:    c.String("input-json"),
+				inputJSONSet: c.IsSet("input-json"),
+				inputFile:    c.String("input-file"),
+				inputFileSet: c.IsSet("input-file"),
+				inputStdin:   c.Bool("input-stdin"),
+				interactive:  c.Bool("interactive"),
+			}, os.Stdin)
 			slog.Debug("execute attributes parsed", "count", len(c.Args().Slice()[2:]))
 			if err != nil {
 				return err
@@ -112,6 +135,55 @@ func executeCommand(appCtx *AppContext) *cli.Command {
 			return applyEffects(effects, appCtx)
 		},
 	}
+}
+
+type actionInputOptions struct {
+	inputJSON    string
+	inputJSONSet bool
+	inputFile    string
+	inputFileSet bool
+	inputStdin   bool
+	interactive  bool
+}
+
+// readActionPayload selects and decodes one action input source. Validation is
+// completed before action schema discovery or execution can make an HTTP call.
+func readActionPayload(args []string, options actionInputOptions, stdin io.Reader) (map[string]interface{}, error) {
+	sources := 0
+	if len(args) > 0 {
+		sources++
+	}
+	if options.inputJSONSet {
+		sources++
+	}
+	if options.inputFileSet {
+		sources++
+	}
+	if options.inputStdin {
+		sources++
+	}
+	if sources > 1 {
+		return nil, fmt.Errorf("provide only one of positional payload, --input-json, --input-file, or --input-stdin")
+	}
+	if options.inputStdin && options.interactive {
+		return nil, fmt.Errorf("--input-stdin cannot be combined with --interactive")
+	}
+
+	if options.inputJSONSet {
+		return readBoundedJSONObject(strings.NewReader(options.inputJSON))
+	}
+	if options.inputFileSet {
+		file, err := os.Open(options.inputFile)
+		if err != nil {
+			return nil, fmt.Errorf("open input file: %w", err)
+		}
+		defer file.Close()
+		return readBoundedJSONObject(file)
+	}
+	if options.inputStdin {
+		return readBoundedJSONObject(stdin)
+	}
+	return parseAttributes(args)
 }
 
 // applyEffects performs the IO for each ResponseEffect. This is the edge.
