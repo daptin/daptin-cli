@@ -20,12 +20,14 @@ import (
 const maxLLMRequestBytes int64 = 16 << 20
 
 type llmRequestOptions struct {
-	model      string
-	shorthand  string
-	inputJSON  string
-	inputFile  string
-	inputStdin bool
-	stream     bool
+	model        string
+	shorthand    string
+	inputJSON    string
+	inputJSONSet bool
+	inputFile    string
+	inputFileSet bool
+	inputStdin   bool
+	stream       bool
 }
 
 func llmCommand(appCtx *AppContext) *cli.Command {
@@ -140,17 +142,19 @@ func llmRequestFlags() []cli.Flag {
 
 func llmOptions(c *cli.Context, shorthand string) llmRequestOptions {
 	return llmRequestOptions{
-		model: c.String("model"), shorthand: shorthand, inputJSON: c.String("input-json"),
-		inputFile: c.String("input-file"), inputStdin: c.Bool("input-stdin"), stream: c.Bool("stream"),
+		model: c.String("model"), shorthand: shorthand,
+		inputJSON: c.String("input-json"), inputJSONSet: c.IsSet("input-json"),
+		inputFile: c.String("input-file"), inputFileSet: c.IsSet("input-file"),
+		inputStdin: c.Bool("input-stdin"), stream: c.Bool("stream"),
 	}
 }
 
 func buildLLMRequest(operation string, options llmRequestOptions, stdin io.Reader) ([]byte, bool, error) {
 	provided := 0
-	if options.inputJSON != "" {
+	if options.inputJSONSet {
 		provided++
 	}
-	if options.inputFile != "" {
+	if options.inputFileSet {
 		provided++
 	}
 	if options.inputStdin {
@@ -166,9 +170,9 @@ func buildLLMRequest(operation string, options llmRequestOptions, stdin io.Reade
 	request := map[string]json.RawMessage{}
 	var err error
 	switch {
-	case options.inputJSON != "":
+	case options.inputJSONSet:
 		request, err = decodeBoundedLLMRequest(strings.NewReader(options.inputJSON))
-	case options.inputFile != "":
+	case options.inputFileSet:
 		var file *os.File
 		file, err = os.Open(options.inputFile)
 		if err == nil {
@@ -363,16 +367,14 @@ func consumeLLMStream(c *cli.Context, reader io.Reader, operation string) error 
 		}
 		if _, failed := payload["error"]; event.Name == "error" || failed {
 			if jsonOutput {
-				_, _ = os.Stdout.Write(event.Data)
-				_, _ = os.Stdout.Write([]byte("\n"))
+				if err := writeLLMJSONLine(event.Data); err != nil {
+					return err
+				}
 			}
 			return client.ParseLLMError(event.Data, 0, "")
 		}
 		if jsonOutput {
-			if _, err := os.Stdout.Write(event.Data); err != nil {
-				return err
-			}
-			if _, err := os.Stdout.Write([]byte("\n")); err != nil {
+			if err := writeLLMJSONLine(event.Data); err != nil {
 				return err
 			}
 		}
@@ -413,6 +415,16 @@ func consumeLLMStream(c *cli.Context, reader io.Reader, operation string) error 
 			return responseFailure(payload)
 		}
 	}
+}
+
+func writeLLMJSONLine(data []byte) error {
+	var compact bytes.Buffer
+	if err := json.Compact(&compact, data); err != nil {
+		return fmt.Errorf("compact LLM SSE JSON: %w", err)
+	}
+	compact.WriteByte('\n')
+	_, err := os.Stdout.Write(compact.Bytes())
+	return err
 }
 
 func chatDeltaText(payload map[string]json.RawMessage) string {
